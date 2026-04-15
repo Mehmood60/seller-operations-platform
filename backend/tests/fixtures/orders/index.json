@@ -1,0 +1,20 @@
+[
+    {
+        "id": "order-001",
+        "ebay_order_id": "order-001",
+        "status": "PAID",
+        "buyer_username": "fixture_buyer_1",
+        "grand_total": { "value": "49.99", "currency": "GBP" },
+        "created_at": "2026-04-13T10:00:00+00:00",
+        "updated_at": "2026-04-13T10:00:00+00:00"
+    },
+    {
+        "id": "order-002",
+        "ebay_order_id": "order-002",
+        "status": "DELIVERED",
+        "buyer_username": "fixture_buyer_2",
+        "grand_total": { "value": "24.99", "currency": "GBP" },
+        "created_at": "2026-04-14T15:00:00+00:00",
+        "updated_at": "2026-04-14T15:00:00+00:00"
+    }
+]

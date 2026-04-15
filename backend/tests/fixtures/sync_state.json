@@ -1,0 +1,4 @@
+{
+    "orders":   { "last_synced_at": null, "last_offset": 0, "total_synced": 0 },
+    "listings": { "last_synced_at": null, "total_synced": 0 }
+}

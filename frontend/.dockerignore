@@ -1,0 +1,37 @@
+# frontend/.dockerignore
+
+# Dependencies (installed inside the image)
+node_modules/
+
+# Next.js build output (produced inside the image by next build)
+.next/
+
+# Local env files (secrets injected via build args / runtime env vars)
+.env*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Test suite
+__tests__/
+test/
+coverage/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+vitest.config.ts
+
+# Documentation
+*.md
+
+# IDE / OS noise
+.idea/
+.vscode/
+*.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore

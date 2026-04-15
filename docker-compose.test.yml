@@ -1,0 +1,44 @@
+# docker-compose.test.yml — CI test runner
+#
+# Runs backend (PHPUnit) and frontend (Vitest) tests in isolated containers.
+# Both services exit with the test runner's exit code so CI can detect failure.
+#
+# Usage (local):
+#   docker compose -f docker-compose.test.yml up --build --exit-code-from backend-tests
+#   docker compose -f docker-compose.test.yml up --build --exit-code-from frontend-tests
+#
+# In GitLab CI the pipeline uses the images directly (see .gitlab-ci.yml).
+
+services:
+
+  backend-tests:
+    build:
+      context: ./backend
+      target: test
+    environment:
+      APP_ENV: test
+      API_KEY: test-api-key
+      ENCRYPTION_KEY: "test-32-char-key-change-me!!xx"
+      EBAY_CLIENT_ID: dummy
+      EBAY_CLIENT_SECRET: dummy
+      EBAY_REDIRECT_URI: http://localhost:8080/api/auth/ebay/callback
+      EBAY_SANDBOX: "true"
+    # Override CMD to emit JUnit XML (useful if you need local reports)
+    command: >
+      vendor/bin/phpunit
+      --log-junit /var/www/tests/reports/phpunit.xml
+      --colors=never
+    volumes:
+      - ./backend/tests/reports:/var/www/tests/reports
+
+  frontend-tests:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: builder
+    environment:
+      CI: "true"
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+      NEXT_PUBLIC_API_KEY: test-api-key
+    command: npm run test:run -- --reporter=verbose
+    # No external ports needed — tests run and exit

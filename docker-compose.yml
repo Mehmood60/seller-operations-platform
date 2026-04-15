@@ -1,0 +1,51 @@
+# docker-compose.yml — local development / self-hosted production
+#
+# Usage:
+#   docker compose up --build          # start both services
+#   docker compose down                # stop (data volume preserved)
+#   docker compose down -v             # stop + delete data volume
+#
+# Env vars required in backend/.env:
+#   API_KEY, ENCRYPTION_KEY, EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_REDIRECT_URI
+
+services:
+
+  backend:
+    build:
+      context: ./backend
+      target: production
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    volumes:
+      # Named volume so JSON data survives container restarts
+      - seller_data:/var/www/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "php", "-r", "echo file_get_contents('http://localhost:8080/api/sync/status');"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      target: runner
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+        NEXT_PUBLIC_API_KEY: ${API_KEY:-dev-secret-key-change-me}
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+      NEXT_PUBLIC_API_KEY: ${API_KEY:-dev-secret-key-change-me}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  seller_data:
+    driver: local

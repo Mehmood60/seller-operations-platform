@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/11.0/phpunit.xsd"
+    bootstrap="tests/bootstrap.php"
+    colors="true"
+    stopOnFailure="false"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+    </testsuites>
+
+    <coverage>
+        <include>
+            <directory>src</directory>
+        </include>
+        <report>
+            <text outputFile="php://stdout" showUncoveredFiles="false"/>
+        </report>
+    </coverage>
+
+    <php>
+        <env name="APP_ENV"        value="test"/>
+        <env name="STORAGE_DRIVER" value="json"/>
+        <env name="EBAY_SANDBOX"   value="true"/>
+        <env name="API_KEY"        value="test-api-key"/>
+        <env name="ENCRYPTION_KEY" value="test-32-char-key-change-me!!xx"/>
+        <env name="FRONTEND_URL"   value="http://localhost:3000"/>
+    </php>
+</phpunit>

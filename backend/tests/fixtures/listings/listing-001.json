@@ -1,0 +1,19 @@
+{
+    "id": "listing-001",
+    "ebay_item_id": "listing-001",
+    "title": "Fixture Camera Body",
+    "sku": "FIX-CAM-001",
+    "status": "ACTIVE",
+    "category": { "ebay_category_id": "31388", "name": "Film Cameras" },
+    "price": { "value": "44.99", "currency": "GBP" },
+    "quantity": { "available": 3, "sold": 5 },
+    "images": [],
+    "condition": "USED_EXCELLENT",
+    "description_snippet": "A fixture listing for integration tests.",
+    "listing_url": "https://www.ebay.co.uk/itm/listing-001",
+    "listed_at": "2026-01-01T10:00:00+00:00",
+    "ends_at": "2026-07-01T10:00:00+00:00",
+    "synced_at": "2026-04-15T09:00:00+00:00",
+    "created_at": "2026-01-01T10:00:00+00:00",
+    "updated_at": "2026-04-15T09:00:00+00:00"
+}

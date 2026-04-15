@@ -1,0 +1,157 @@
+# .gitlab-ci.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Pipeline stages:
+#   test   — backend unit + integration (PHPUnit), frontend unit (Vitest)
+#   build  — Docker images pushed to GitLab Container Registry (main/develop only)
+#
+# Required CI/CD variables (Settings → CI/CD → Variables):
+#   CI_REGISTRY_IMAGE  — set automatically by GitLab
+#   EBAY_CLIENT_ID     — dummy value is fine; tests mock the eBay client
+#   EBAY_CLIENT_SECRET — same
+#   NEXT_PUBLIC_API_KEY — used as build arg for the frontend image
+#
+# Triggered on: all branches (test stage) + main/develop (build stage)
+# ─────────────────────────────────────────────────────────────────────────────
+
+stages:
+  - test
+  - build
+
+# ── Shared config ─────────────────────────────────────────────────────────────
+
+default:
+  interruptible: true
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  # Keep Composer/npm caches across runs
+  COMPOSER_CACHE_DIR: "$CI_PROJECT_DIR/.cache/composer"
+  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.cache/npm"
+
+# ── Test stage ────────────────────────────────────────────────────────────────
+
+backend:unit-tests:
+  stage: test
+  image: php:8.2-cli
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq unzip curl libssl-dev
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - cd backend
+    - composer install --no-interaction --prefer-dist --quiet
+  script:
+    - vendor/bin/phpunit --testsuite Unit
+        --log-junit ../reports/phpunit-unit.xml
+        --colors=never
+  coverage: '/^\s*Lines:\s*(\d+(?:\.\d+)?%)/'
+  artifacts:
+    when: always
+    reports:
+      junit: reports/phpunit-unit.xml
+    paths:
+      - reports/phpunit-unit.xml
+    expire_in: 7 days
+  cache:
+    key: "composer-$CI_COMMIT_REF_SLUG"
+    paths:
+      - .cache/composer/
+
+backend:integration-tests:
+  stage: test
+  image: php:8.2-cli
+  variables:
+    APP_ENV: test
+    API_KEY: test-api-key
+    ENCRYPTION_KEY: "test-32-char-key-change-me!!xx"
+    EBAY_CLIENT_ID: dummy
+    EBAY_CLIENT_SECRET: dummy
+    EBAY_REDIRECT_URI: "http://localhost:8080/api/auth/ebay/callback"
+    EBAY_SANDBOX: "true"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq unzip curl libssl-dev
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - cd backend
+    - composer install --no-interaction --prefer-dist --quiet
+  script:
+    - vendor/bin/phpunit --testsuite Integration
+        --log-junit ../reports/phpunit-integration.xml
+        --colors=never
+  artifacts:
+    when: always
+    reports:
+      junit: reports/phpunit-integration.xml
+    paths:
+      - reports/phpunit-integration.xml
+    expire_in: 7 days
+  cache:
+    key: "composer-$CI_COMMIT_REF_SLUG"
+    paths:
+      - .cache/composer/
+
+frontend:unit-tests:
+  stage: test
+  image: node:20-alpine
+  before_script:
+    - cd frontend
+    - npm ci --quiet
+  script:
+    - npm run test:run -- --reporter=verbose --reporter=junit --outputFile=../reports/vitest.xml
+  artifacts:
+    when: always
+    reports:
+      junit: reports/vitest.xml
+    paths:
+      - reports/vitest.xml
+    expire_in: 7 days
+  cache:
+    key: "npm-$CI_COMMIT_REF_SLUG"
+    paths:
+      - .cache/npm/
+
+# ── Build stage ───────────────────────────────────────────────────────────────
+# Only runs on main and develop branches after all tests pass.
+
+.build-docker:
+  stage: build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+
+build:backend:
+  extends: .build-docker
+  script:
+    - |
+      IMAGE="$CI_REGISTRY_IMAGE/backend"
+      TAG="${CI_COMMIT_SHORT_SHA}"
+      docker build
+        --target production
+        --tag "$IMAGE:$TAG"
+        --tag "$IMAGE:latest"
+        ./backend
+      docker push "$IMAGE:$TAG"
+      docker push "$IMAGE:latest"
+
+build:frontend:
+  extends: .build-docker
+  script:
+    - |
+      IMAGE="$CI_REGISTRY_IMAGE/frontend"
+      TAG="${CI_COMMIT_SHORT_SHA}"
+      docker build
+        --target runner
+        --build-arg NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}"
+        --build-arg NEXT_PUBLIC_API_KEY="${NEXT_PUBLIC_API_KEY:-dev-secret-key-change-me}"
+        --tag "$IMAGE:$TAG"
+        --tag "$IMAGE:latest"
+        ./frontend
+      docker push "$IMAGE:$TAG"
+      docker push "$IMAGE:latest"

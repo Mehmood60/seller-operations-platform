@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: DejaVu Sans, sans-serif; font-size: 12px; color: #1a1a2e; margin: 0; padding: 0; }
+  .page { padding: 40px; }
+  .header { display: table; width: 100%; margin-bottom: 30px; }
+  .header-left { display: table-cell; vertical-align: top; width: 50%; }
+  .header-right { display: table-cell; vertical-align: top; text-align: right; }
+  .shop-name { font-size: 22px; font-weight: bold; color: #0f3460; margin-bottom: 2px; }
+  .shop-biz  { font-size: 12px; font-weight: bold; color: #333; margin-bottom: 4px; }
+  .shop-meta { color: #555; font-size: 11px; line-height: 1.6; }
+  .invoice-badge { display: inline-block; background: #0f3460; color: white; padding: 6px 16px; border-radius: 4px; font-size: 14px; font-weight: bold; margin-bottom: 8px; }
+  .invoice-meta { font-size: 11px; color: #555; line-height: 1.8; }
+  .divider { border: none; border-top: 2px solid #0f3460; margin: 20px 0; }
+  .two-col { display: table; width: 100%; margin-bottom: 24px; }
+  .col { display: table-cell; vertical-align: top; width: 50%; }
+  .section-title { font-size: 11px; font-weight: bold; text-transform: uppercase; color: #0f3460; margin-bottom: 8px; letter-spacing: 1px; }
+  .address-block { font-size: 12px; line-height: 1.7; color: #333; }
+  table.items { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  table.items thead tr { background: #0f3460; color: white; }
+  table.items thead th { padding: 8px 10px; text-align: left; font-size: 11px; font-weight: bold; }
+  table.items tbody tr:nth-child(even) { background: #f4f7fb; }
+  table.items td { padding: 8px 10px; border-bottom: 1px solid #e8ecf0; }
+  .totals-table { width: 260px; margin-left: auto; border-collapse: collapse; }
+  .totals-table td { padding: 6px 10px; font-size: 12px; }
+  .totals-table .total-row td { font-weight: bold; font-size: 14px; border-top: 2px solid #0f3460; color: #0f3460; padding-top: 8px; }
+  .footer-row { display: table; width: 100%; margin-top: 30px; }
+  .footer-col { display: table-cell; width: 50%; font-size: 11px; color: #555; line-height: 1.8; }
+  .footer-note { margin-top: 30px; text-align: center; font-size: 10px; color: #999; border-top: 1px solid #e8ecf0; padding-top: 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="shop-name">{{SELLER_NAME}}</div>
+      <div class="shop-meta">
+        {{SELLER_ADDRESS}}<br>
+        {{SELLER_POSTAL_COUNTRY}}<br>
+        {{SELLER_CONTACT}}
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="invoice-badge">INVOICE</div>
+      <div class="invoice-meta">
+        <strong>Invoice #:</strong> {{INVOICE_NUMBER}}<br>
+        <strong>Invoice Date:</strong> {{INVOICE_DATE}}<br>
+        <strong>Order Date:</strong> {{ORDER_DATE}}<br>
+        <strong>Order ID:</strong> {{ORDER_ID}}
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Buyer + Payment Info -->
+  <div class="two-col">
+    <div class="col">
+      <div class="section-title">Bill To / Ship To</div>
+      <div class="address-block">
+        <strong>{{BUYER_NAME}}</strong><br>
+        eBay: {{BUYER_USERNAME}}<br>
+        {{BUYER_LINE1}}<br>
+        {{BUYER_LINE2}}
+        {{BUYER_CITY}}, {{BUYER_STATE}} {{BUYER_POSTAL}}<br>
+        {{BUYER_COUNTRY}}
+      </div>
+    </div>
+    <div class="col">
+      <div class="section-title">Payment Details</div>
+      <div class="address-block">
+        <strong>Payment Method:</strong> {{PAYMENT_METHOD}}<br>
+        <strong>Payment Date:</strong> {{PAYMENT_DATE}}<br>
+        <strong>Shipping Service:</strong> {{SHIPPING_SERVICE}}<br>
+        <strong>Tracking:</strong> {{TRACKING_NUMBER}}
+      </div>
+    </div>
+  </div>
+
+  <!-- Line Items -->
+  <div class="section-title">Items Ordered</div>
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:45%">Item</th>
+        <th style="width:15%">SKU</th>
+        <th style="width:10%; text-align:center">Qty</th>
+        <th style="width:15%; text-align:right">Unit Price</th>
+        <th style="width:15%; text-align:right">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{LINE_ITEMS}}
+    </tbody>
+  </table>
+
+  <!-- Totals -->
+  <table class="totals-table">
+    <tr>
+      <td>Subtotal</td>
+      <td style="text-align:right">{{SUBTOTAL}}</td>
+    </tr>
+    <tr>
+      <td>Shipping</td>
+      <td style="text-align:right">{{SHIPPING_COST}}</td>
+    </tr>
+    <tr class="total-row">
+      <td>Total</td>
+      <td style="text-align:right">{{GRAND_TOTAL}}</td>
+    </tr>
+  </table>
+
+  <!-- Footer -->
+  <div class="footer-note">
+    Thank you for your purchase! This invoice was generated automatically by {{SELLER_NAME}}.
+  </div>
+
+</div>
+</body>
+</html>

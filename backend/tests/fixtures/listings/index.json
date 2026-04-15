@@ -1,0 +1,13 @@
+[
+    {
+        "id": "listing-001",
+        "ebay_item_id": "listing-001",
+        "title": "Fixture Camera Body",
+        "status": "ACTIVE",
+        "price": { "value": "44.99", "currency": "GBP" },
+        "quantity_available": 3,
+        "quantity_sold": 5,
+        "listed_at": "2026-01-01T10:00:00+00:00",
+        "created_at": "2026-01-01T10:00:00+00:00"
+    }
+]

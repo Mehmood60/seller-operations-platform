@@ -1,0 +1,47 @@
+# ── Environment files ─────────────────────────────────────────────────────────
+backend/.env
+frontend/.env.local
+frontend/.env*.local
+
+# ── PHP dependencies ──────────────────────────────────────────────────────────
+backend/vendor/
+
+# ── JSON data storage (runtime data, not source code) ─────────────────────────
+backend/data/
+
+# ── Node dependencies ─────────────────────────────────────────────────────────
+frontend/node_modules/
+
+# ── Next.js build output ──────────────────────────────────────────────────────
+frontend/.next/
+frontend/out/
+
+# ── Test coverage reports ─────────────────────────────────────────────────────
+frontend/coverage/
+backend/coverage/
+backend/.phpunit.result.cache
+backend/.phpunit.cache/
+
+# ── OS files ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE / editor ──────────────────────────────────────────────────────────────
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── Claude Code ───────────────────────────────────────────────────────────────
+.claude/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+*.zip
+*.tar.gz

@@ -1,0 +1,50 @@
+{
+    "id": "order-001",
+    "ebay_order_id": "order-001",
+    "status": "PAID",
+    "buyer": {
+        "username": "fixture_buyer_1",
+        "email": "",
+        "shipping_address": {
+            "name": "Fixture Buyer One",
+            "line1": "1 Fixture Street",
+            "line2": "",
+            "city": "London",
+            "state": "England",
+            "postal_code": "EC1A 1BB",
+            "country_code": "GB"
+        }
+    },
+    "line_items": [
+        {
+            "ebay_item_id": "listing-001",
+            "title": "Fixture Camera Body",
+            "sku": "FIX-001",
+            "quantity": 1,
+            "unit_price": { "value": "45.99", "currency": "GBP" },
+            "total_price": { "value": "45.99", "currency": "GBP" }
+        }
+    ],
+    "payment": {
+        "method": "EBAY_MANAGED",
+        "status": "PAID",
+        "amount": { "value": "49.99", "currency": "GBP" },
+        "paid_at": "2026-04-13T10:30:00Z"
+    },
+    "shipping": {
+        "service": "Royal Mail Tracked 48",
+        "cost": { "value": "4.00", "currency": "GBP" },
+        "tracking_number": null,
+        "shipped_at": null,
+        "delivered_at": null
+    },
+    "totals": {
+        "subtotal":    { "value": "45.99", "currency": "GBP" },
+        "shipping":    { "value": "4.00",  "currency": "GBP" },
+        "grand_total": { "value": "49.99", "currency": "GBP" }
+    },
+    "notes": "",
+    "created_at": "2026-04-13T10:00:00+00:00",
+    "updated_at": "2026-04-13T10:00:00+00:00",
+    "synced_at":  "2026-04-15T09:00:00+00:00"
+}

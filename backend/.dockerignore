@@ -1,0 +1,27 @@
+# backend/.dockerignore
+# Keeps the build context lean — nothing here should land in any image layer.
+
+# Vendor (installed inside the image via composer install)
+vendor/
+
+# Runtime data (mounted as a named volume at runtime — never baked in)
+data/
+
+# Local env file (secrets must come from environment variables, not baked layers)
+.env
+
+# Test suite (not needed in the production image; the test image COPYs tests/ explicitly)
+tests/
+
+# Documentation
+*.md
+ARCHITECTURE.md
+
+# IDE / OS noise
+.idea/
+.vscode/
+*.DS_Store
+Thumbs.db
+
+# Composer auth tokens on developer machines
+auth.json
