@@ -6,6 +6,7 @@ namespace Tests\Unit\Services;
 
 use App\PDF\InvoicePdf;
 use App\Services\InvoiceService;
+use App\Services\ProfileService;
 use App\Storage\Json\OrderRepository;
 use Tests\TestCase;
 
@@ -14,15 +15,18 @@ class InvoiceServiceTest extends TestCase
     private string $tempDir;
     private OrderRepository $orderRepo;
     private InvoicePdf $mockPdf;
+    private ProfileService $mockProfileService;
     private InvoiceService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir   = $this->createTempDir();
-        $this->orderRepo = new OrderRepository($this->tempDir);
-        $this->mockPdf   = $this->createMock(InvoicePdf::class);
-        $this->service   = new InvoiceService($this->orderRepo, $this->mockPdf);
+        $this->tempDir            = $this->createTempDir();
+        $this->orderRepo          = new OrderRepository($this->tempDir);
+        $this->mockPdf            = $this->createMock(InvoicePdf::class);
+        $this->mockProfileService = $this->createMock(ProfileService::class);
+        $this->mockProfileService->method('getFirst')->willReturn([]);
+        $this->service = new InvoiceService($this->orderRepo, $this->mockPdf, $this->mockProfileService);
     }
 
     protected function tearDown(): void
@@ -83,7 +87,10 @@ class InvoiceServiceTest extends TestCase
         $this->mockPdf
             ->expects($this->once())
             ->method('generate')
-            ->with($this->callback(fn(array $order): bool => $order['id'] === 'order-001'))
+            ->with(
+                $this->callback(fn(array $order): bool => $order['id'] === 'order-001'),
+                $this->isType('array')
+            )
             ->willReturn('%PDF-1.4 fake-content');
 
         $this->service->generateForOrder('order-001');

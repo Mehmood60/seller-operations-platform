@@ -1,12 +1,15 @@
 import type { Money } from '@/types';
 
-// All monetary values are displayed in Euro regardless of the stored currency code.
-// The numeric value from the data is used as-is — no conversion is performed.
-const DISPLAY_SYMBOL = '€';
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  GBP: '£',
+  USD: '$',
+  EUR: '€',
+};
 
 export function formatMoney(money: Money | undefined | null): string {
   if (!money) return '—';
-  return DISPLAY_SYMBOL + parseFloat(money.value).toFixed(2);
+  const symbol = CURRENCY_SYMBOLS[money.currency] ?? money.currency;
+  return symbol + parseFloat(money.value).toFixed(2);
 }
 
 export function formatDate(iso: string | null | undefined): string {
