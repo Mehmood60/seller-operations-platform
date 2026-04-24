@@ -67,6 +67,15 @@ class ProductScraperService
                 throw new \InvalidArgumentException('Internal URLs are not allowed.');
             }
         }
+        // CJDropshipping uses aggressive bot protection — scraping is blocked.
+        // Price monitoring for CJ products requires the CJDropshipping API instead.
+        if (str_contains($host, 'cjdropshipping.com')) {
+            throw new \RuntimeException(
+                'CJDropshipping blockiert automatische Preisabfragen (Bot-Schutz). ' .
+                'Verbinde dein CJ-Konto unter Einstellungen → CJ API, ' .
+                'um Preisüberwachung für CJ-Produkte zu aktivieren.'
+            );
+        }
     }
 
     private function fetchUrl(string $url): string
@@ -77,7 +86,7 @@ class ProductScraperService
                     'User-Agent'               => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                     'Accept'                   => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
                     'Accept-Language'          => 'en-US,en;q=0.9,de;q=0.8',
-                    'Accept-Encoding'          => 'gzip, deflate, br',
+                    'Accept-Encoding'          => 'gzip, deflate',
                     'Cache-Control'            => 'max-age=0',
                     'Upgrade-Insecure-Requests'=> '1',
                     'Sec-Fetch-Dest'           => 'document',

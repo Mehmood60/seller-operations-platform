@@ -33,6 +33,228 @@ class AiListingService
         return $this->parseResponse($rawText);
     }
 
+    public function suggestSpecifics(string $title, string $description, array $currentSpecifics, array $missingFields): array
+    {
+        if (empty($this->apiKey)) {
+            throw new \RuntimeException('GROQ_API_KEY is not configured.');
+        }
+
+        $currentJson = json_encode($currentSpecifics, JSON_UNESCAPED_UNICODE);
+        $fieldsJson  = json_encode($missingFields, JSON_UNESCAPED_UNICODE);
+        $cleanDesc   = mb_substr(strip_tags($description), 0, 800);
+        $example     = '{"Abteilung":"Damen","Größe":"M","Stil":"N/A"}';
+
+        $prompt = "You are an eBay product specialist. Look at this listing and suggest values for the missing item specifics.\n\n"
+            . "Product Title: {$title}\n"
+            . "Product Description: {$cleanDesc}\n"
+            . "Current Item Specifics: {$currentJson}\n\n"
+            . "Missing fields: {$fieldsJson}\n\n"
+            . "Rules:\n"
+            . "- Look in title and description for each missing field value\n"
+            . "- If found, use that value; if not determinable, use \"N/A\"\n"
+            . "- Return ONLY a valid JSON object, no explanation, no markdown\n"
+            . "- Example format: {$example}";
+
+        $raw  = $this->callGroq($prompt);
+        $text = preg_replace('/^```(?:json)?\s*/m', '', $raw) ?? $raw;
+        $text = preg_replace('/\s*```$/m', '', $text) ?? $text;
+        $text = trim($text);
+
+        if (!str_starts_with($text, '{')) {
+            preg_match('/\{[\s\S]+\}/', $text, $m);
+            $text = $m[0] ?? '{}';
+        }
+
+        $data   = json_decode($text, true);
+        $result = [];
+        foreach ($missingFields as $field) {
+            $result[$field] = (is_array($data) && !empty($data[$field])) ? (string) $data[$field] : 'N/A';
+        }
+
+        return $result;
+    }
+
+    public function feedbackResponse(string $feedbackText, string $type, string $tone): string
+    {
+        if (empty($this->apiKey)) {
+            throw new \RuntimeException('GROQ_API_KEY is not configured.');
+        }
+
+        $typeLabel = match ($type) {
+            'negative_feedback' => 'Negative eBay-Bewertung',
+            'buyer_message'     => 'Käufernachricht',
+            'return_request'    => 'Rückgabeanfrage',
+            'not_received'      => 'Artikel nicht erhalten (INR)',
+            default             => 'Käufernachricht',
+        };
+
+        $toneLabel = match ($tone) {
+            'apologetic'   => 'Entschuldigend und empathisch',
+            'refund'       => 'Rückerstattung anbieten',
+            'replacement'  => 'Ersatz anbieten',
+            'explanation'  => 'Sachlich erklären (kein Fehler unsererseits)',
+            'firm'         => 'Freundlich aber bestimmt',
+            default        => 'Professionell und lösungsorientiert',
+        };
+
+        $cleanText = mb_substr(strip_tags($feedbackText), 0, 1000);
+
+        $prompt = <<<PROMPT
+Du bist ein professioneller eBay-Verkäufer in Deutschland. Schreibe eine professionelle Antwort auf folgende Käufernachricht oder Bewertung.
+
+Art der Nachricht: {$typeLabel}
+Gewünschter Ton: {$toneLabel}
+
+Originalnachricht des Käufers:
+"{$cleanText}"
+
+Regeln:
+- Antworte IMMER auf Deutsch
+- Sei höflich, professionell und lösungsorientiert
+- Beginne mit einer kurzen Begrüßung (z.B. "Sehr geehrte/r Käufer/in,")
+- Adressiere das Problem direkt
+- Biete eine konkrete Lösung entsprechend dem Ton
+- Ende mit einer Einladung zur weiteren Kontaktaufnahme und einer Grußformel
+- Halte die Antwort kurz (3-6 Sätze)
+- Nenne keine konkreten Namen oder Bestellnummern (du kennst sie nicht)
+
+Gib NUR dieses JSON zurück, kein Markdown:
+{"response": "deine Antwort hier"}
+PROMPT;
+
+        $raw  = $this->callGroq($prompt, 512);
+        $text = preg_replace('/^```(?:json)?\s*/m', '', $raw) ?? $raw;
+        $text = preg_replace('/\s*```$/m', '', $text) ?? $text;
+        $text = trim($text);
+
+        if (!str_starts_with($text, '{')) {
+            preg_match('/\{[\s\S]+\}/', $text, $m);
+            $text = $m[0] ?? '{}';
+        }
+
+        $data = json_decode($text, true);
+        return (string)($data['response'] ?? $text);
+    }
+
+    public function suggestPrice(
+        string $title,
+        float $currentPrice,
+        string $shippingType,
+        float $shippingCost,
+        ?float $competitorLowest,
+        int $competitorCount,
+        array $topCompetitors
+    ): array {
+        if (empty($this->apiKey)) {
+            throw new \RuntimeException('GROQ_API_KEY is not configured.');
+        }
+
+        $currentTotal  = $currentPrice + ($shippingType === 'paid' ? $shippingCost : 0.0);
+        $competitorJson = json_encode(array_slice($topCompetitors, 0, 5), JSON_UNESCAPED_UNICODE);
+        $lowestStr      = $competitorLowest !== null ? number_format($competitorLowest, 2) : 'unknown';
+        $shippingStr    = $shippingType === 'free' ? 'free' : ('€' . number_format($shippingCost, 2));
+
+        $prompt = "You are an eBay pricing analyst. Analyze the competitive landscape and recommend an optimal listing price.\n\n"
+            . "=== YOUR LISTING ===\n"
+            . "Title: {$title}\n"
+            . "Current price: €" . number_format($currentPrice, 2) . "\n"
+            . "Shipping: {$shippingStr}\n"
+            . "Total buyer cost: €" . number_format($currentTotal, 2) . "\n\n"
+            . "=== MARKET DATA ===\n"
+            . "Competitors found: {$competitorCount}\n"
+            . "Lowest competitor total: €{$lowestStr}\n"
+            . "Top competitors (title / total price / condition / location):\n{$competitorJson}\n\n"
+            . "=== TASK ===\n"
+            . "Recommend an optimal ITEM price (excluding shipping). Rules:\n"
+            . "- 0-2 competitors: premium pricing is possible, suggest a slight increase\n"
+            . "- 3-8 competitors: stay competitive — 3-8% below the lowest total\n"
+            . "- 9+ competitors: undercut more aggressively — 8-15% below lowest total\n"
+            . "- Ignore clearly non-comparable results (used/damaged at very low prices)\n"
+            . "- Minimum margin: ensure item price > €0.50\n"
+            . "- strategy values: 'undercut', 'match', 'premium', 'no_change'\n\n"
+            . "Return ONLY this JSON, no markdown:\n"
+            . "{\"suggested_price\": 24.99, \"strategy\": \"undercut\", \"reasoning\": \"Short English explanation\"}";
+
+        $raw  = $this->callGroq($prompt, 512);
+        $text = preg_replace('/^```(?:json)?\s*/m', '', $raw) ?? $raw;
+        $text = preg_replace('/\s*```$/m', '', $text) ?? $text;
+        $text = trim($text);
+        if (!str_starts_with($text, '{')) {
+            preg_match('/\{[\s\S]+\}/', $text, $m);
+            $text = $m[0] ?? '{}';
+        }
+
+        $data = json_decode($text, true);
+        return [
+            'suggested_price' => round((float)($data['suggested_price'] ?? $currentPrice), 2),
+            'strategy'        => (string)($data['strategy'] ?? 'no_change'),
+            'reasoning'       => (string)($data['reasoning'] ?? 'No change recommended.'),
+        ];
+    }
+
+    public function improveTitle(string $title, string $description): string
+    {
+        if (empty($this->apiKey)) {
+            throw new \RuntimeException('GROQ_API_KEY is not configured.');
+        }
+
+        $cleanDesc = mb_substr(strip_tags($description), 0, 600);
+        $prompt = "Du bist ein professioneller eBay.de-Verkäufer. Verbessere diesen Titel für ein eBay-Inserat.\n\n"
+            . "Aktueller Titel: {$title}\n"
+            . "Produktbeschreibung: {$cleanDesc}\n\n"
+            . "Regeln:\n"
+            . "- STRIKT max. 80 Zeichen — niemals überschreiten, auch nicht um 1 Zeichen!\n"
+            . "- Auf Deutsch schreiben\n"
+            . "- SEO-optimiert: Hochvolumen-Suchbegriffe zuerst (Produktname + Typ + wichtigste Eigenschaft)\n"
+            . "- Kein GROSSSCHRIFT, keine Sonderzeichen (!, @, #, *)\n"
+            . "- Gib NUR dieses JSON zurück, kein Markdown: {\"title\": \"verbesserter Titel hier\"}";
+
+        $raw  = $this->callGroq($prompt, 256);
+        $text = preg_replace('/^```(?:json)?\s*/m', '', $raw) ?? $raw;
+        $text = preg_replace('/\s*```$/m', '', $text) ?? $text;
+        $text = trim($text);
+        if (!str_starts_with($text, '{')) {
+            preg_match('/\{[\s\S]+\}/', $text, $m);
+            $text = $m[0] ?? '{}';
+        }
+        $data     = json_decode($text, true);
+        $improved = (string)($data['title'] ?? $title);
+        if (mb_strlen($improved) > 80) {
+            $improved = mb_substr($improved, 0, 80);
+        }
+        return $improved;
+    }
+
+    public function improveDescription(string $title, string $description): string
+    {
+        if (empty($this->apiKey)) {
+            throw new \RuntimeException('GROQ_API_KEY is not configured.');
+        }
+
+        $cleanDesc = mb_substr(strip_tags($description), 0, 800);
+        $prompt = "Du bist ein professioneller eBay.de-Verkäufer. Schreibe eine professionelle Produktbeschreibung für ein eBay-Inserat.\n\n"
+            . "Produkttitel: {$title}\n"
+            . "Aktuelle Beschreibung: {$cleanDesc}\n\n"
+            . "Regeln:\n"
+            . "- Schreibe auf Deutsch\n"
+            . "- Professionelles HTML mit <ul><li>-Aufzählungen\n"
+            . "- Hauptmerkmale, Lieferumfang, Kompatibilität auflisten\n"
+            . "- 150-250 Wörter\n"
+            . "- Mit kurzem Versandhinweis enden\n"
+            . "- Gib NUR dieses JSON zurück, kein Markdown: {\"description\": \"HTML-Beschreibung hier\"}";
+
+        $raw  = $this->callGroq($prompt, 1024);
+        $text = preg_replace('/^```(?:json)?\s*/m', '', $raw) ?? $raw;
+        $text = preg_replace('/\s*```$/m', '', $text) ?? $text;
+        $text = trim($text);
+        if (!str_starts_with($text, '{')) {
+            preg_match('/\{[\s\S]+\}/', $text, $m);
+            $text = $m[0] ?? '{}';
+        }
+        $data = json_decode($text, true);
+        return (string)($data['description'] ?? $description);
+    }
+
     public function translate(string $title, string $description): array
     {
         if (empty($this->apiKey)) {
@@ -90,7 +312,7 @@ Seitentext-Auszug:
 
 === REGELN ===
 SPRACHE: Schreibe Titel, Beschreibung und Schlüsselwörter auf DEUTSCH.
-1. TITEL: Max. 80 Zeichen. Wichtigste Suchbegriffe zuerst. Kein GROSSSCHRIFT, kein !, @, #, *.
+1. TITEL: STRIKT max. 80 Zeichen — niemals überschreiten, auch nicht um 1 Zeichen! SEO-optimiert für eBay-Suche: Hochvolumen-Suchbegriffe zuerst (Produktname + Typ + wichtigste Eigenschaft + Zielgruppe/Material/Farbe). Keine Füllwörter. Kein GROSSSCHRIFT, keine Sonderzeichen (!, @, #, *). Beispiel: "Nike Laufschuhe Herren Schwarz Atmungsaktiv Gr. 42 Sport Running"
 2. ZUSTAND: "Neu" für AliExpress/Dropshipping. "Gebraucht - Wie neu" nur wenn Seite explizit "gebraucht" sagt.
 3. BESCHREIBUNG: Professionelles HTML mit <ul><li>-Aufzählungen auf Deutsch. Hauptmerkmale, Lieferumfang, Kompatibilität. 150-250 Wörter. Mit kurzem Versandhinweis enden.
 4. PREIS (EUR):
@@ -156,7 +378,7 @@ Gib NUR dieses JSON zurück, keine Erklärung, kein Markdown:
 PROMPT;
     }
 
-    private function callGroq(string $prompt): string
+    private function callGroq(string $prompt, int $maxTokens = 2048): string
     {
         try {
             $response = $this->http->post('https://api.groq.com/openai/v1/chat/completions', [
@@ -167,7 +389,7 @@ PROMPT;
                 'json' => [
                     'model'       => $this->model,
                     'temperature' => 0.3,
-                    'max_tokens'  => 2048,
+                    'max_tokens'  => $maxTokens,
                     'messages'    => [
                         [
                             'role'    => 'system',

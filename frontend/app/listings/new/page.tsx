@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { ai as aiApi, listings as listingsApi } from '@/lib/api';
 import { RichTextEditor } from '@/components/RichTextEditor';
+import type { RichTextEditorHandle } from '@/components/RichTextEditor';
 import type { AiShipping, ShippingOrigin } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ export default function NewListingPage() {
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [analyzed, setAnalyzed]         = useState(false);
   const [form, setForm]                 = useState<FormData>(EMPTY);
-  const [editorKey, setEditorKey] = useState(0);
+  const richEditorRef = useRef<RichTextEditorHandle>(null);
 
   // translate
   const [translating, setTranslating]   = useState(false);
@@ -95,6 +96,8 @@ export default function NewListingPage() {
   const [publishing, setPublishing]             = useState(false);
   const [publishError, setPublishError]         = useState<string | null>(null);
   const [publishedListing, setPublishedListing] = useState<{ listing_url?: string } | null>(null);
+  const [solvingAI, setSolvingAI]               = useState(false);
+  const [aiSolveError, setAiSolveError]         = useState<string | null>(null);
 
   // category search
   const [searchingCats, setSearchingCats]       = useState(false);
@@ -114,6 +117,88 @@ export default function NewListingPage() {
 
   const setShipping = <K extends keyof AiShipping>(key: K, val: AiShipping[K]) =>
     setForm(f => ({ ...f, shipping: { ...f.shipping, [key]: val } }));
+
+  const extractMissing = (msg: string): string[] => {
+    const out: string[] = [];
+    // Primary: "The item specific <name> is missing"
+    const re1 = /The item specific ([\s\S]+?) is missing/gi;
+    let m;
+    while ((m = re1.exec(msg)) !== null) out.push(m[1].trim());
+    if (out.length > 0) return [...new Set(out)];
+    // Fallback: "Add <name> to this listing"  (always present in eBay missing-specific messages)
+    const re2 = /Add ([^.]+?) to this listing/gi;
+    while ((m = re2.exec(msg)) !== null) out.push(m[1].trim());
+    return [...new Set(out)];
+  };
+
+  const handleSolveWithAI = async () => {
+    // Primary: item_specifics rows with empty values (added by publish error handler)
+    const emptyFields = form.item_specifics
+      .filter(s => s.name.trim() !== '' && s.value.trim() === '')
+      .map(s => s.name.trim());
+
+    // Fallback: parse field names out of the error message text
+    const fromError = extractMissing(publishError ?? '');
+
+    const missing = emptyFields.length > 0 ? emptyFields : fromError;
+
+    if (missing.length === 0) {
+      console.warn('[AI Solve] Could not extract missing fields. publishError:', publishError);
+      setAiSolveError('Fehlende Felder konnten nicht erkannt werden. Bitte Felder manuell ausfüllen.');
+      return;
+    }
+    console.log('[AI Solve] Sending missing fields to AI:', missing);
+    setSolvingAI(true);
+    setAiSolveError(null);
+    try {
+      const currentSpecifics: Record<string, string> = {};
+      form.item_specifics.forEach(s => { currentSpecifics[s.name] = s.value; });
+      const res = await aiApi.suggestSpecifics({
+        title: form.title,
+        description: form.description,
+        item_specifics: currentSpecifics,
+        missing_fields: missing,
+      });
+      const suggestions = res.data as Record<string, string>;
+      setForm(f => {
+        const updated = f.item_specifics.map(s =>
+          suggestions[s.name] !== undefined ? { ...s, value: suggestions[s.name] } : s
+        );
+        const existingNames = new Set(updated.map(s => s.name));
+        const toAdd = Object.entries(suggestions)
+          .filter(([name]) => !existingNames.has(name))
+          .map(([name, value]) => newSpecific(name, value));
+        return { ...f, item_specifics: [...updated, ...toAdd] };
+      });
+    } catch (err: unknown) {
+      setAiSolveError(err instanceof Error ? err.message : 'KI konnte die fehlenden Felder nicht ausfüllen.');
+    } finally {
+      setSolvingAI(false);
+    }
+  };
+
+  const handleReset = () => {
+    setTab('ai');
+    setUrl('');
+    setAnalyzing(false);
+    setAnalyzeError(null);
+    setAnalyzed(false);
+    setForm(EMPTY);
+    richEditorRef.current?.clear();
+    setTranslating(false);
+    setTranslation(null);
+    setTranslateError(null);
+    setSaving(false);
+    setSaveError(null);
+    setPublishing(false);
+    setPublishError(null);
+    setPublishedListing(null);
+    setSearchingCats(false);
+    setCatSuggestions([]);
+    setShowCatDrop(false);
+    setCatSearchError(null);
+    setUploadError(null);
+  };
 
   // ── AI analyze ────────────────────────────────────────────────────────────
 
@@ -137,7 +222,7 @@ export default function NewListingPage() {
         quantity:            '1',
         sku:                 '',
         shipping_origin:     s.shipping_origin ?? 'UNKNOWN',
-        shipping:            s.shipping ?? SHIPPING_DE,
+        shipping:            SHIPPING_DE,
         category_suggestion: s.category_suggestion ?? '',
         category_id:         '',
         keywords:            s.keywords ?? [],
@@ -146,8 +231,11 @@ export default function NewListingPage() {
           : [newSpecific('Marke', 'Ohne Markenzeichen')],
         images:              raw.images ?? [],
       });
-      setEditorKey(k => k + 1);
+      richEditorRef.current?.setValue(s.description ?? '');
       setAnalyzed(true);
+      // Auto-search eBay category using the AI suggestion
+      const catQuery = (s.category_suggestion || s.title || '').trim();
+      if (catQuery) void handleSearchCategories(catQuery);
     } catch (err: unknown) {
       setAnalyzeError(err instanceof Error ? err.message : 'Analyse fehlgeschlagen.');
     } finally {
@@ -285,8 +373,8 @@ export default function NewListingPage() {
 
   // ── Category search ───────────────────────────────────────────────────────
 
-  const handleSearchCategories = async () => {
-    const q = (form.title || form.category_suggestion).trim();
+  const handleSearchCategories = async (overrideQuery?: string) => {
+    const q = (overrideQuery ?? (form.title || form.category_suggestion)).trim();
     if (!q || searchingCats) return;
     setSearchingCats(true);
     setCatSuggestions([]);
@@ -341,13 +429,15 @@ export default function NewListingPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Veröffentlichung fehlgeschlagen.';
       setPublishError(msg);
-      const missing = [...msg.matchAll(/The item specific (.+?) is missing/g)].map(m => m[1]);
+      const missing = extractMissing(msg);
       if (missing.length > 0) {
-        setForm(f => {
-          const existing = new Set(f.item_specifics.map(s => s.name));
-          const toAdd = missing.filter(n => !existing.has(n)).map(n => newSpecific(n, ''));
-          return toAdd.length > 0 ? { ...f, item_specifics: [...f.item_specifics, ...toAdd] } : f;
-        });
+        setTimeout(() => {
+          setForm(f => {
+            const existing = new Set(f.item_specifics.map(s => s.name));
+            const toAdd = missing.filter(n => !existing.has(n)).map(n => newSpecific(n, ''));
+            return toAdd.length > 0 ? { ...f, item_specifics: [...f.item_specifics, ...toAdd] } : f;
+          });
+        }, 0);
       }
     } finally {
       setPublishing(false);
@@ -518,13 +608,18 @@ export default function NewListingPage() {
                   placeholder="z.B. Haustierbedarf > Hunde"
                   className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
-                <button onClick={handleSearchCategories} disabled={searchingCats}
+                <button onClick={() => handleSearchCategories()} disabled={searchingCats}
                   title="eBay-Kategorie suchen"
                   className="px-2.5 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                 >
                   {searchingCats ? <Loader2 className="h-4 w-4 animate-spin text-gray-400" /> : <Search className="h-4 w-4 text-gray-400" />}
                 </button>
               </div>
+              {!form.category_id && !searchingCats && (
+                <p className="mt-1 text-xs text-gray-400">
+                  Pflichtfeld — klicke auf 🔍 um automatisch zu suchen
+                </p>
+              )}
               {form.category_id && (
                 <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
                   <CheckCircle className="h-3 w-3" /> eBay-ID: {form.category_id}
@@ -578,7 +673,7 @@ export default function NewListingPage() {
           </div>
 
           <RichTextEditor
-            key={editorKey}
+            ref={richEditorRef}
             defaultValue={form.description}
             onChange={v => set('description', v)}
           />
@@ -792,9 +887,39 @@ export default function NewListingPage() {
 
         {/* Actions */}
         <div className="space-y-3 pt-4 border-t border-gray-100">
+          {canSave && form.price.trim() && !form.category_id && !publishedListing && (
+            <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-500" />
+              <span>
+                <strong>Kategorie fehlt</strong> — ohne Kategorie kann nicht veröffentlicht werden.
+                {' '}Klicke das 🔍 Lupensymbol neben dem Kategorie-Feld, um automatisch die passende eBay-Kategorie zu suchen.
+              </span>
+            </div>
+          )}
           {(saveError || publishError) && (
-            <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />{saveError ?? publishError}
+            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 space-y-2">
+              <div className="flex items-start gap-2 text-red-600 text-sm">
+                <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <span>{saveError ?? publishError}</span>
+              </div>
+              {publishError?.includes('is missing') && (
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={handleSolveWithAI}
+                    disabled={solvingAI}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-md transition-colors w-fit"
+                  >
+                    {solvingAI
+                      ? <><Loader2 className="h-3 w-3 animate-spin" /> KI löst…</>
+                      : <><Sparkles className="h-3 w-3" /> Mit KI lösen</>}
+                  </button>
+                  {aiSolveError && (
+                    <p className="text-xs text-red-500 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3 flex-shrink-0" />{aiSolveError}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {publishedListing && (
@@ -802,13 +927,20 @@ export default function NewListingPage() {
               <p className="text-green-700 font-semibold text-sm flex items-center gap-2">
                 <CheckCircle className="h-4 w-4" /> Inserat wurde erfolgreich auf eBay veröffentlicht!
               </p>
-              {(publishedListing as { listing_url?: string }).listing_url && (
-                <a href={(publishedListing as { listing_url?: string }).listing_url} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+              <div className="flex items-center gap-3 flex-wrap">
+                {(publishedListing as { listing_url?: string }).listing_url && (
+                  <a href={(publishedListing as { listing_url?: string }).listing_url} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" /> Auf eBay ansehen
+                  </a>
+                )}
+                <button onClick={handleReset}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition-colors"
                 >
-                  <ExternalLink className="h-3.5 w-3.5" /> Auf eBay ansehen
-                </a>
-              )}
+                  + Neues Inserat erstellen
+                </button>
+              </div>
             </div>
           )}
           <div className="flex items-center gap-3">
@@ -832,7 +964,7 @@ export default function NewListingPage() {
             </button>
             {!canPublish && !publishedListing && (
               <span className="text-xs text-gray-400">
-                {!canSave ? 'Titel erforderlich' : !form.price.trim() ? 'Preis erforderlich' : 'eBay-Kategorie auswählen'}
+                {!canSave ? 'Titel erforderlich' : !form.price.trim() ? 'Preis erforderlich' : ''}
               </span>
             )}
           </div>

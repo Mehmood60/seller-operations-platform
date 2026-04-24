@@ -1,19 +1,19 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { listings as listingsApi } from '@/lib/api';
+import { listings as listingsApi, sync as syncApi } from '@/lib/api';
 import { ListingGrid } from '@/components/ListingGrid';
 import { SyncButton } from '@/components/SyncButton';
 import type { Listing } from '@/types';
-import { Plus, Search } from 'lucide-react';
+import { CheckCircle2, Loader2, Plus, Search } from 'lucide-react';
 
 const STATUS_OPTIONS = [
-  { value: '',             label: 'Alle' },
-  { value: 'ACTIVE',       label: 'Aktiv' },
-  { value: 'DRAFT',        label: 'Entwurf' },
-  { value: 'ENDED',        label: 'Beendet' },
-  { value: 'OUT_OF_STOCK', label: 'Ausverkauft' },
+  { value: '',             label: 'All' },
+  { value: 'ACTIVE',       label: 'Active' },
+  { value: 'DRAFT',        label: 'Draft' },
+  { value: 'ENDED',        label: 'Ended' },
+  { value: 'OUT_OF_STOCK', label: 'Out of Stock' },
 ];
 
 export default function ListingsPage() {
@@ -25,6 +25,12 @@ export default function ListingsPage() {
   const [page, setPage]               = useState(1);
   const [total, setTotal]             = useState(0);
   const limit = 50;
+
+  // Auto-sync state
+  const [autoSyncing, setAutoSyncing]     = useState(false);
+  const [autoSyncDone, setAutoSyncDone]   = useState(false);
+  const [autoSyncCount, setAutoSyncCount] = useState<number | null>(null);
+  const hasSynced = useRef(false);
 
   const fetchListings = useCallback(async () => {
     setLoading(true);
@@ -44,12 +50,45 @@ export default function ListingsPage() {
     fetchListings();
   }, [fetchListings]);
 
+  // Auto-sync on first mount — runs in background, refreshes list when done
+  useEffect(() => {
+    if (hasSynced.current) return;
+    hasSynced.current = true;
+
+    setAutoSyncing(true);
+    syncApi.listings()
+      .then(res => {
+        const count = res.data.synced ?? 0;
+        setAutoSyncCount(count);
+        setAutoSyncDone(true);
+        if (count > 0) fetchListings();
+        setTimeout(() => setAutoSyncDone(false), 4000);
+      })
+      .catch(() => { /* silent — manual sync button still works */ })
+      .finally(() => setAutoSyncing(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const totalPages = Math.ceil(total / limit);
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Inserate</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-gray-900">Listings</h1>
+          {autoSyncing && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Syncing…
+            </span>
+          )}
+          {autoSyncDone && !autoSyncing && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-green-600">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {autoSyncCount === 0 ? 'Up to date' : `${autoSyncCount} updated`}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <SyncButton type="listings" onComplete={fetchListings} />
           <Link
@@ -57,17 +96,18 @@ export default function ListingsPage() {
             className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
           >
             <Plus className="h-4 w-4" />
-            Neues Inserat
+            New Listing
           </Link>
         </div>
       </div>
+
 
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Inserate suchen…"
+            placeholder="Search listings…"
             value={search}
             maxLength={100}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
@@ -88,28 +128,28 @@ export default function ListingsPage() {
       {error ? (
         <p className="text-red-500">{error}</p>
       ) : loading ? (
-        <p className="text-gray-400 text-center py-12">Lädt…</p>
+        <p className="text-gray-400 text-center py-12">Loading…</p>
       ) : (
         <ListingGrid listings={listingList} />
       )}
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-gray-500">
-          <span>{total} Inserate gesamt</span>
+          <span>{total} listings total</span>
           <div className="flex gap-2">
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
               className="px-3 py-1.5 border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"
             >
-              Zurück
+              Previous
             </button>
             <button
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
               className="px-3 py-1.5 border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"
             >
-              Weiter
+              Next
             </button>
           </div>
         </div>

@@ -43,8 +43,20 @@ export interface Shipping {
   service: string;
   cost: Money;
   tracking_number: string | null;
+  carrier?: string | null;
   shipped_at: string | null;
   delivered_at: string | null;
+}
+
+export interface Fulfillment {
+  status: 'ordered' | 'shipped' | null;
+  aliexpress_order_id: string | null;
+  source_url: string | null;
+  ordered_at: string | null;
+  tracking_number: string | null;
+  carrier: string | null;
+  tracking_pushed_at: string | null;
+  tracking_push_error: string | null;
 }
 
 export interface Totals {
@@ -68,6 +80,7 @@ export interface Order {
   created_at: string;
   updated_at: string;
   synced_at: string;
+  fulfillment?: Fulfillment;
 }
 
 // ─── Listing ────────────────────────────────────────────────────────────────
@@ -250,6 +263,116 @@ export interface ScrapedProduct {
 export interface AiAnalysisResult {
   raw_product: ScrapedProduct;
   ai_suggestion: AiSuggestion;
+}
+
+// ─── Competitor Check ────────────────────────────────────────────────────────
+
+export interface CompetitorResult {
+  item_id: string;
+  title: string;
+  url: string;
+  image: string | null;
+  condition: string;
+  price: string;
+  shipping: string;
+  total_price: string;
+  currency: string;
+  location: string;
+}
+
+export interface CompetitorCheckSummary {
+  last_checked_at: string | null;
+  lowest_total: string | null;
+  lowest_url: string | null;
+  result_count: number;
+  keywords_used: string | null;
+}
+
+export interface CompetitorCheck extends CompetitorCheckSummary {
+  results: CompetitorResult[];
+}
+
+// ─── Price Monitor ──────────────────────────────────────────────────────────
+
+export interface MonitorPendingChange {
+  old_source_price: string;
+  new_source_price: string;
+  suggested_ebay_price: string;
+  detected_at: string;
+  applied: boolean;
+  applied_at?: string;
+}
+
+export interface MonitorInfo {
+  enabled: boolean;
+  last_checked_at: string | null;
+  source_price: string | null;
+  source_currency: string | null;
+  pending_change: MonitorPendingChange | null;
+}
+
+export interface MonitorItem {
+  id: string;
+  title: string;
+  status: string;
+  image: string | null;
+  ebay_price: Money;
+  source_url: string;
+  listing_url: string;
+  monitor: MonitorInfo;
+  competitor_check: CompetitorCheckSummary | null;
+  price_changed?: boolean;
+  suggested_ebay_price?: number | null;
+}
+
+// ─── AI Feedback Response ────────────────────────────────────────────────────
+
+export type FeedbackType = 'negative_feedback' | 'buyer_message' | 'return_request' | 'not_received';
+export type FeedbackTone = 'apologetic' | 'refund' | 'replacement' | 'explanation' | 'firm';
+
+export interface FeedbackHistoryItem {
+  id: string;
+  feedbackText: string;
+  type: FeedbackType;
+  tone: FeedbackTone;
+  response: string;
+  createdAt: string;
+}
+
+// ─── Listing Health Score ────────────────────────────────────────────────────
+
+export type HealthGrade = 'A' | 'B' | 'C' | 'D' | 'F';
+export type HealthPriority = 'high' | 'medium' | 'low';
+
+export interface HealthIssue {
+  field: string;
+  priority: HealthPriority;
+  message: string;
+  action: string;
+}
+
+export interface HealthScore {
+  score: number;
+  grade: HealthGrade;
+  issues: HealthIssue[];
+  dims: {
+    title: number;
+    images: number;
+    specifics: number;
+    description: number;
+    category: number;
+    source_url: number;
+  };
+}
+
+// ─── Smart Repricing ────────────────────────────────────────────────────────
+
+export type RepricingStrategy = 'undercut' | 'match' | 'premium' | 'no_change';
+
+export interface PriceSuggestion {
+  suggested_price: number;
+  strategy: RepricingStrategy;
+  reasoning: string;
 }
 
 // ─── API Response wrapper ───────────────────────────────────────────────────

@@ -117,18 +117,36 @@ class EbaySyncService
                 $ebayItemId = $item['itemId'];
                 $syncedEbayIds[] = $ebayItemId;
 
-                // Dedup: if a local entry already has this ebay_item_id (e.g. draft_xxxx
-                // after publish), merge into that entry instead of creating a second one.
                 $existing = $this->listingRepo->findByEbayItemId($ebayItemId);
+
                 if ($existing !== null && $existing['id'] !== $ebayItemId) {
+                    // draft_xxxx was published — merge into the draft entry, delete stale eBay-ID file
                     $mapped['id']             = $existing['id'];
-                    $mapped['item_specifics'] = $existing['item_specifics'] ?? [];
+                    $mapped['item_specifics'] = $existing['item_specifics'] ?? $mapped['item_specifics'] ?? [];
                     $mapped['keywords']       = $existing['keywords']       ?? [];
-                    $mapped['description']    = $existing['description']    ?? '';
                     $mapped['source_url']     = $existing['source_url']     ?? '';
                     $mapped['shipping']       = $existing['shipping']       ?? [];
-                    // Remove stale file keyed by eBay item id if a previous sync created it
+                    // Prefer locally-edited description; fall back to freshly fetched
+                    $mapped['description']    = ($existing['description'] ?? '') !== ''
+                        ? $existing['description']
+                        : ($mapped['description'] ?? '');
                     $this->listingRepo->delete($ebayItemId);
+
+                } elseif ($existing !== null) {
+                    // Same-ID re-sync: always preserve user-edited fields so they
+                    // are not wiped by an eBay sync that lacks certain data.
+                    $mapped['source_url']     = $existing['source_url']     ?? '';
+                    $mapped['keywords']       = $existing['keywords']       ?? [];
+                    $mapped['shipping']       = $existing['shipping']       ?? [];
+                    $mapped['monitor']        = $existing['monitor']        ?? [];
+                    $mapped['competitor_check'] = $existing['competitor_check'] ?? null;
+                    // Keep item specifics & description if user has already edited them
+                    if (!empty($existing['item_specifics'])) {
+                        $mapped['item_specifics'] = $existing['item_specifics'];
+                    }
+                    if (($existing['description'] ?? '') !== '') {
+                        $mapped['description'] = $existing['description'];
+                    }
                 }
 
                 $this->listingRepo->save($mapped);

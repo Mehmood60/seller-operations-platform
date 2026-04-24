@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Services\EbayCompetitorService;
+use App\Services\ListingHealthService;
 use App\Services\ListingService;
 use App\Helpers\Response;
 
 class ListingController
 {
-    public function __construct(private readonly ListingService $listingService) {}
+    public function __construct(
+        private readonly ListingService         $listingService,
+        private readonly EbayCompetitorService  $competitorService,
+        private readonly ListingHealthService   $healthService,
+    ) {}
 
     private const ALLOWED_STATUSES = ['ACTIVE', 'ENDED', 'OUT_OF_STOCK', 'DRAFT'];
 
@@ -122,6 +128,35 @@ class ListingController
         } catch (\RuntimeException $e) {
             Response::error($e->getMessage(), 500);
         }
+    }
+
+    // ── Competitor price check ────────────────────────────────────────────────
+
+    public function checkCompetitors(array $params): void
+    {
+        try {
+            $result = $this->competitorService->checkCompetitors($params['id'] ?? '');
+            Response::json($result);
+        } catch (\RuntimeException $e) {
+            Response::error($e->getMessage(), 422);
+        }
+    }
+
+    public function checkAllCompetitors(array $params): void
+    {
+        Response::json($this->competitorService->checkAllCompetitors());
+    }
+
+    // ── Listing health score ──────────────────────────────────────────────────
+
+    public function healthScore(array $params): void
+    {
+        $listing = $this->listingService->get($params['id'] ?? '');
+        if ($listing === null) {
+            Response::error('Listing not found.', 404);
+            return;
+        }
+        Response::json($this->healthService->score($listing));
     }
 
     public function suggestCategories(array $params): void

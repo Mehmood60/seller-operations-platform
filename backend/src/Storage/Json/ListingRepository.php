@@ -35,6 +35,20 @@ class ListingRepository extends JsonRepository
         return $result;
     }
 
+    public function findMonitorable(): array
+    {
+        $result = [];
+        foreach ($this->readIndex() as $entry) {
+            if (!empty($entry['source_url'])) {
+                $entity = $this->find((string)$entry['id']);
+                if ($entity !== null) {
+                    $result[] = $entity;
+                }
+            }
+        }
+        return $result;
+    }
+
     protected function buildIndexEntry(array $entity): array
     {
         return [
@@ -47,6 +61,8 @@ class ListingRepository extends JsonRepository
             'quantity_sold'      => $entity['quantity']['sold'] ?? 0,
             'listed_at'          => $entity['listed_at'] ?? date('c'),
             'created_at'         => $entity['listed_at'] ?? date('c'),
+            'source_url'         => $entity['source_url'] ?? '',
+            'monitor_enabled'    => $entity['monitor']['enabled'] ?? false,
         ];
     }
 }

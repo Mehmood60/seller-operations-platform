@@ -7,6 +7,16 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use App\Helpers\Response;
 use App\Kernel;
 
+// ── Global exception handler ──────────────────────────────────────────────────
+set_exception_handler(function (Throwable $e): void {
+    if (!headers_sent()) {
+        header('Content-Type: application/json');
+        http_response_code(500);
+    }
+    echo json_encode(['data' => null, 'meta' => [], 'error' => $e->getMessage()]);
+    exit;
+});
+
 // ── Load .env ────────────────────────────────────────────────────────────────
 $envFile = __DIR__ . '/../.env';
 if (file_exists($envFile)) {

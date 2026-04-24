@@ -1,6 +1,8 @@
 # eBay Seller Operations Platform
 
-A self-hosted seller dashboard for managing your eBay shop. Syncs orders and listings directly from the eBay API, generates professional invoices and sales reports as PDFs, and displays analytics — all from a single interface you control.
+A self-hosted seller dashboard for managing your eBay shop. Syncs orders and listings directly from the eBay API, generates professional invoices and sales reports as PDFs, displays analytics, and uses AI (Groq) to automate listing creation and operations — all from a single interface you control.
+
+> **Language policy:** The app UI is in English. Listing content (titles, descriptions, item specifics) is generated and published in German for the eBay.de marketplace.
 
 ---
 
@@ -27,8 +29,12 @@ A self-hosted seller dashboard for managing your eBay shop. Syncs orders and lis
 
 This platform connects to your eBay seller account via OAuth 2.0 and pulls real-time data into a local dashboard. Key features:
 
-- **Order management** — view, filter, and search all orders; download invoices as PDFs
-- **Listing management** — browse active/ended listings with full detail view
+- **Order management** — view, filter, and search all orders; download invoices as PDFs; record AliExpress fulfilment and push tracking to buyers
+- **Listing management** — browse active/ended listings, create AI-assisted drafts, edit and publish to eBay
+- **Listing Health Score** — rule-based quality scoring (100 pts, grades A–F) with AI fix buttons for title, description, and item specifics
+- **Smart Repricing** — check live eBay competitor prices per listing and get AI-powered price recommendations
+- **AI Feedback Replies** — paste a buyer message and get a professional German reply drafted by AI (4 message types, 5 tones)
+- **Source Price Monitor** — track supplier prices and get suggested eBay price updates when costs change
 - **Sales analytics** — 30-day dashboard with revenue, order volume, and top sellers
 - **PDF reports** — downloadable sales reports with date range filtering
 - **User accounts** — register/login with session-based authentication
@@ -44,9 +50,11 @@ This platform connects to your eBay seller account via OAuth 2.0 and pulls real-
 | Frontend | Next.js 14 (App Router), React 18, TypeScript |
 | Styling | Tailwind CSS 3.4 |
 | Charts | Recharts |
+| Icons | Lucide React |
 | Backend | PHP 8.2+ (custom lightweight router, no framework) |
 | HTTP Client | Guzzle 7.8 |
 | PDF Generation | DomPDF 2.0 |
+| AI | Groq API (LLaMA 3.1-8b-instant) |
 | Storage (V1) | JSON flat files (`backend/data/`) |
 | Storage (V2) | MySQL / PostgreSQL (migration path built in) |
 | Auth | eBay OAuth 2.0 + session-based user auth |
@@ -404,6 +412,8 @@ After both servers are running:
 | `EBAY_REDIRECT_URI` | **Yes** | `YourName-App-SBX-a1b2c` | **RuName** from eBay OAuth settings (not the raw URL) |
 | `EBAY_SCOPES` | Yes | *(see .env.example)* | Space-separated OAuth scopes |
 | `EBAY_SANDBOX` | Yes | `true` | `true` = sandbox, `false` = production |
+| `GROQ_API_KEY` | **Yes** | `gsk_...` | Free key from [console.groq.com](https://console.groq.com) — required for all AI features |
+| `GROQ_MODEL` | No | `llama-3.1-8b-instant` | Groq model ID (default is free-tier fast model) |
 | `EBAY_SANDBOX_AUTH_URL` | Yes | *(see .env.example)* | eBay sandbox auth endpoint |
 | `EBAY_SANDBOX_TOKEN_URL` | Yes | *(see .env.example)* | eBay sandbox token endpoint |
 | `EBAY_SANDBOX_API_URL` | Yes | *(see .env.example)* | eBay sandbox API base URL |
@@ -478,8 +488,36 @@ All responses use the envelope format:
 ### Listings
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/listings` | List (`?status=ACTIVE&search=`) |
+| `GET` | `/api/listings` | List (`?status=ACTIVE&search=&page=1&limit=50`) |
 | `GET` | `/api/listings/{id}` | Listing detail |
+| `POST` | `/api/listings` | Create new draft |
+| `PUT` | `/api/listings/{id}` | Update draft |
+| `DELETE` | `/api/listings/{id}` | Delete draft |
+| `POST` | `/api/listings/{id}/publish` | Publish draft to eBay |
+| `POST` | `/api/listings/{id}/revise` | Revise live eBay listing |
+| `GET` | `/api/listings/{id}/health` | Quality score (grade A–F, 6 dimensions) |
+| `GET` | `/api/listings/category-suggest?q=` | eBay category suggestions |
+| `POST` | `/api/listings/{id}/check-competitors` | Live competitor price check |
+| `POST` | `/api/listings/check-all-competitors` | Batch competitor check |
+
+### Price Monitor
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/monitor` | Monitor status for all listings |
+| `POST` | `/api/monitor/check-all` | Re-check all source prices |
+| `POST` | `/api/monitor/{id}/check` | Re-check one source price |
+| `POST` | `/api/monitor/{id}/toggle` | Enable / disable monitoring |
+| `POST` | `/api/monitor/{id}/apply` | Apply pending price update |
+
+### AI
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/ai/analyze` | Scrape URL + generate full listing |
+| `POST` | `/api/ai/translate` | German → English preview translation |
+| `POST` | `/api/ai/suggest-specifics` | Fill missing item specifics |
+| `POST` | `/api/ai/improve-listing` | Improve title or description (`aspect: title\|description`) |
+| `POST` | `/api/ai/suggest-price` | AI price recommendation from competitor data |
+| `POST` | `/api/ai/feedback-response` | Generate German buyer reply |
 
 ### Dashboard & Reports
 | Method | Path | Description |
@@ -699,7 +737,19 @@ The storage layer is fully abstracted. Migration requires zero changes to Contro
 
 ---
 
-## V2 Roadmap
+## AI Features Roadmap
+
+| # | Feature | Status |
+|---|---|---|
+| 1 | Listing Health Score | ✅ Done |
+| 2 | AI Feedback Replies | ✅ Done |
+| 3 | Smart Repricing | ✅ Done |
+| 4 | Product Sourcing Scout | Planned next |
+| 5 | Bulk Listing (multi-URL import) | Planned |
+| 6 | Demand Forecasting | Planned |
+| 7 | CJ API Integration | Planned (last) |
+
+## Platform V2 Roadmap
 
 - MySQL / PostgreSQL storage driver
 - eBay Webhooks for real-time order notifications

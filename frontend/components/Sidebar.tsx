@@ -3,13 +3,16 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
+  Activity,
   BarChart2,
   LayoutDashboard,
   LogOut,
+  MessageSquareReply,
   Settings,
   ShoppingCart,
   Store,
   Tag,
+  TrendingUp,
   UserCircle,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
@@ -18,6 +21,9 @@ const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
   { href: '/orders',    label: 'Orders',    Icon: ShoppingCart },
   { href: '/listings',  label: 'Listings',  Icon: Tag },
+  { href: '/monitor',    label: 'Monitor',    Icon: Activity },
+  { href: '/repricing',  label: 'Repricing',  Icon: TrendingUp },
+  { href: '/feedback',   label: 'Feedback',   Icon: MessageSquareReply },
   { href: '/reports',   label: 'Reports',   Icon: BarChart2 },
   { href: '/settings',  label: 'Settings',  Icon: Settings },
   { href: '/profile',   label: 'Profile',   Icon: UserCircle },

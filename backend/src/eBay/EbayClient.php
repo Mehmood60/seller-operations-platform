@@ -226,7 +226,7 @@ XML;
         // Surface eBay API errors instead of silently returning 0 items
         $ack = strtolower((string)($xml->Ack ?? ''));
         if ($ack === 'failure') {
-            $errorMsg = (string)($xml->Errors->ShortMessage ?? 'Unknown eBay API error');
+            $errorMsg = trim(strip_tags((string)($xml->Errors->ShortMessage ?? 'Unknown eBay API error')));
             $errorCode = (string)($xml->Errors->ErrorCode ?? '');
             throw new \RuntimeException(
                 'eBay API error' . ($errorCode ? " (code {$errorCode})" : '') . ': ' . $errorMsg
@@ -361,7 +361,35 @@ XML;
             'categoryName' => (string)($item->PrimaryCategory->CategoryName ?? ''),
             'condition'    => (string)($item->ConditionDisplayName ?? ''),
             'endTime'      => (string)($item->ListingDetails->EndTime ?? ''),
+            'description'  => (string)($item->Description ?? ''),
+            'pictureUrls'  => $this->extractPictureUrls($item),
+            'itemSpecifics'=> $this->extractItemSpecifics($item),
         ];
+    }
+
+    private function extractPictureUrls(\SimpleXMLElement $item): array
+    {
+        $urls = [];
+        foreach ($item->PictureDetails->PictureURL ?? [] as $url) {
+            $u = trim((string)$url);
+            if ($u !== '') {
+                $urls[] = $u;
+            }
+        }
+        return $urls;
+    }
+
+    private function extractItemSpecifics(\SimpleXMLElement $item): array
+    {
+        $specifics = [];
+        foreach ($item->ItemSpecifics->NameValueList ?? [] as $pair) {
+            $name  = trim((string)($pair->Name ?? ''));
+            $value = trim((string)($pair->Value ?? ''));
+            if ($name !== '') {
+                $specifics[$name] = $value;
+            }
+        }
+        return $specifics;
     }
 
     public function getApiBaseUrl(): string
@@ -455,7 +483,7 @@ XML;
 
             $ack = strtolower((string)($xmlResp->Ack ?? ''));
             if ($ack === 'failure') {
-                $msg = (string)($xmlResp->Errors->ShortMessage ?? 'Unknown upload error');
+                $msg = trim(strip_tags((string)($xmlResp->Errors->ShortMessage ?? 'Unknown upload error')));
                 throw new \RuntimeException('eBay picture upload failed: ' . $msg);
             }
 
@@ -657,7 +685,7 @@ XML;
                         continue;
                     }
                     $code = (string)($err->ErrorCode   ?? '');
-                    $msg  = (string)($err->LongMessage ?? $err->ShortMessage ?? '');
+                    $msg  = trim(strip_tags((string)($err->LongMessage ?? $err->ShortMessage ?? '')));
                     if ($msg !== '') {
                         $messages[] = ($code !== '' ? "(code {$code}) " : '') . $msg;
                     }
@@ -787,7 +815,7 @@ XML;
                         continue;
                     }
                     $code = (string)($err->ErrorCode   ?? '');
-                    $msg  = (string)($err->LongMessage ?? $err->ShortMessage ?? '');
+                    $msg  = trim(strip_tags((string)($err->LongMessage ?? $err->ShortMessage ?? '')));
                     if ($msg !== '') {
                         $messages[] = ($code !== '' ? "(code {$code}) " : '') . $msg;
                     }
@@ -804,5 +832,139 @@ XML;
         } catch (GuzzleException $e) {
             throw new \RuntimeException('Failed to update eBay listing: ' . $e->getMessage(), 0, $e);
         }
+    }
+
+    // ── CompleteSale (mark shipped + push tracking) ───────────────────────────
+
+    public function completeSale(string $ebayOrderId, string $trackingNumber, string $carrier): void
+    {
+        $token       = $this->getValidAccessToken();
+        $shippedTime = gmdate('Y-m-d\TH:i:s\Z');
+        $carrierXml  = htmlspecialchars($carrier,        ENT_XML1);
+        $trackingXml = htmlspecialchars($trackingNumber, ENT_XML1);
+        $orderXml    = htmlspecialchars($ebayOrderId,    ENT_XML1);
+
+        $xml = <<<XML
+<?xml version="1.0" encoding="utf-8"?>
+<CompleteSaleRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <RequesterCredentials><eBayAuthToken>{$token}</eBayAuthToken></RequesterCredentials>
+  <OrderID>{$orderXml}</OrderID>
+  <Shipped>true</Shipped>
+  <Shipment>
+    <ShippedTime>{$shippedTime}</ShippedTime>
+    <ShipmentTrackingDetails>
+      <ShippingCarrierUsed>{$carrierXml}</ShippingCarrierUsed>
+      <ShipmentTrackingNumber>{$trackingXml}</ShipmentTrackingNumber>
+    </ShipmentTrackingDetails>
+  </Shipment>
+</CompleteSaleRequest>
+XML;
+
+        try {
+            $response = $this->http->post($this->tradingUrl(), [
+                'headers' => $this->tradingHeaders('CompleteSale'),
+                'body'    => $xml,
+            ]);
+
+            $xmlResp = @simplexml_load_string((string)$response->getBody());
+            if ($xmlResp === false) {
+                throw new \RuntimeException('Invalid response from eBay CompleteSale.');
+            }
+
+            $ack = strtolower((string)($xmlResp->Ack ?? ''));
+            if (in_array($ack, ['failure', 'partialfailure'], true)) {
+                $messages = [];
+                foreach ($xmlResp->Errors ?? [] as $err) {
+                    if (strtolower((string)($err->SeverityCode ?? '')) !== 'error') {
+                        continue;
+                    }
+                    $code = (string)($err->ErrorCode   ?? '');
+                    $msg  = trim(strip_tags((string)($err->LongMessage ?? $err->ShortMessage ?? '')));
+                    if ($msg !== '') {
+                        $messages[] = ($code !== '' ? "(code {$code}) " : '') . $msg;
+                    }
+                }
+                if (!empty($messages)) {
+                    throw new \RuntimeException('eBay CompleteSale failed: ' . implode(' | ', $messages));
+                }
+            }
+        } catch (GuzzleException $e) {
+            throw new \RuntimeException('Failed to complete eBay sale: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
+    // ── Browse API — competitor price search ──────────────────────────────────
+
+    public function searchItems(string $keywords, int $limit = 10): array
+    {
+        $token = $this->getApplicationToken();
+
+        try {
+            $response = $this->http->get('/buy/browse/v1/item_summary/search', [
+                'headers' => [
+                    'Authorization'           => 'Bearer ' . $token,
+                    'Content-Type'            => 'application/json',
+                    'X-EBAY-C-MARKETPLACE-ID' => 'EBAY_DE',
+                ],
+                'query' => [
+                    'q'      => $keywords,
+                    'filter' => 'deliveryCountry:DE,buyingOptions:{FIXED_PRICE}',
+                    'sort'   => 'price',
+                    'limit'  => (string)$limit,
+                ],
+            ]);
+
+            $data = json_decode((string)$response->getBody(), true);
+            return $this->parseBrowseResponse(is_array($data) ? $data : []);
+        } catch (GuzzleException $e) {
+            throw new \RuntimeException('eBay Browse API error: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
+    private function parseBrowseResponse(array $data): array
+    {
+        $results = [];
+        foreach ($data['itemSummaries'] ?? [] as $item) {
+            try {
+                $price    = (float)($item['price']['value'] ?? 0);
+                $currency = $item['price']['currency'] ?? 'EUR';
+
+                $shippingCost = 0.0;
+                $shippingLabel = 'free';
+                foreach ($item['shippingOptions'] ?? [] as $opt) {
+                    $type = strtolower($opt['shippingCostType'] ?? '');
+                    if ($type === 'free' || $type === 'freedomestic') {
+                        $shippingCost  = 0.0;
+                        $shippingLabel = 'free';
+                    } else {
+                        $shippingCost  = (float)($opt['shippingCost']['value'] ?? 0);
+                        $shippingLabel = number_format($shippingCost, 2, '.', '');
+                    }
+                    break;
+                }
+
+                $total    = $price + $shippingCost;
+                $location = trim(
+                    ($item['itemLocation']['city'] ?? '') . ', ' .
+                    ($item['itemLocation']['country'] ?? '')
+                , ', ');
+
+                $results[] = [
+                    'item_id'    => $item['itemId'] ?? '',
+                    'title'      => $item['title'] ?? '',
+                    'url'        => $item['itemWebUrl'] ?? '',
+                    'image'      => $item['image']['imageUrl'] ?? null,
+                    'condition'  => $item['conditionDisplayName'] ?? ($item['condition'] ?? '—'),
+                    'price'      => number_format($price, 2, '.', ''),
+                    'shipping'   => $shippingLabel,
+                    'total_price'=> number_format($total, 2, '.', ''),
+                    'currency'   => $currency,
+                    'location'   => $location ?: '—',
+                ];
+            } catch (\Throwable) {
+                // Skip malformed items
+            }
+        }
+        return $results;
     }
 }

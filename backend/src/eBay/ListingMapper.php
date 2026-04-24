@@ -45,6 +45,18 @@ class ListingMapper
      */
     public function mapTradingApiItem(array $item): array
     {
+        $description    = $item['description'] ?? '';
+        $images         = !empty($item['pictureUrls']) ? $item['pictureUrls'] : [];
+        $rawSpecifics   = $item['itemSpecifics'] ?? [];
+
+        // Convert item specifics map → [{name,value}] array used by our edit UI
+        $itemSpecifics = [];
+        foreach ($rawSpecifics as $name => $value) {
+            if ($name !== '') {
+                $itemSpecifics[] = ['name' => $name, 'value' => $value];
+            }
+        }
+
         return [
             'id'                  => $item['itemId'],
             'ebay_item_id'        => $item['itemId'],
@@ -60,9 +72,11 @@ class ListingMapper
                 'available' => $item['quantity'],
                 'sold'      => $item['quantitySold'],
             ],
-            'images'              => $item['pictureUrls'] ?? [],
+            'images'              => $images,
             'condition'           => $item['condition'] ?? '',
-            'description_snippet' => '',
+            'description'         => $description,
+            'description_snippet' => mb_substr(strip_tags($description), 0, 300),
+            'item_specifics'      => $itemSpecifics,
             'listing_url'         => $item['viewItemUrl'],
             'listed_at'           => $item['startTime'] ?: date('c'),
             'ends_at'             => $item['endTime'] ?? '',

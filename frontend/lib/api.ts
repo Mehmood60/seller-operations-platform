@@ -9,6 +9,12 @@ import type {
   AuthStatus,
   User,
   Profile,
+  MonitorItem,
+  CompetitorCheck,
+  HealthScore,
+  FeedbackType,
+  FeedbackTone,
+  PriceSuggestion,
 } from '@/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
@@ -110,6 +116,26 @@ export const orders = {
 
   invoiceUrl: (id: string): string =>
     `${API_BASE}/api/orders/${id}/invoice?key=${encodeURIComponent(API_KEY)}`,
+
+  fulfill: (
+    id: string,
+    aliexpressOrderId: string,
+    sourceUrl?: string,
+  ): Promise<ApiResponse<Order>> =>
+    apiFetch(`/api/orders/${id}/fulfill`, {
+      method: 'POST',
+      body: JSON.stringify({ aliexpress_order_id: aliexpressOrderId, source_url: sourceUrl ?? '' }),
+    }),
+
+  track: (
+    id: string,
+    trackingNumber: string,
+    carrier: string,
+  ): Promise<ApiResponse<Order>> =>
+    apiFetch(`/api/orders/${id}/track`, {
+      method: 'POST',
+      body: JSON.stringify({ tracking_number: trackingNumber, carrier }),
+    }),
 };
 
 // ─── Listings ────────────────────────────────────────────────────────────────
@@ -150,6 +176,15 @@ export const listings = {
 
   suggestCategories: (q: string): Promise<ApiResponse<Array<{ id: string; name: string; percent: number }>>> =>
     apiFetch(`/api/listings/category-suggest?q=${encodeURIComponent(q)}`),
+
+  checkCompetitors: (id: string): Promise<ApiResponse<CompetitorCheck>> =>
+    apiFetch(`/api/listings/${id}/check-competitors`, { method: 'POST' }),
+
+  checkAllCompetitors: (): Promise<ApiResponse<Array<{ id: string; title: string; lowest_total?: string; result_count?: number; error?: string }>>> =>
+    apiFetch('/api/listings/check-all-competitors', { method: 'POST' }),
+
+  health: (id: string): Promise<ApiResponse<HealthScore>> =>
+    apiFetch(`/api/listings/${id}/health`),
 };
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -202,6 +237,76 @@ export const ai = {
     apiFetch('/api/ai/translate', {
       method: 'POST',
       body: JSON.stringify({ title, description }),
+    }),
+
+  suggestSpecifics: (data: {
+    title: string;
+    description: string;
+    item_specifics: Record<string, string>;
+    missing_fields: string[];
+  }): Promise<ApiResponse<Record<string, string>>> =>
+    apiFetch('/api/ai/suggest-specifics', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  feedbackResponse: (
+    feedbackText: string,
+    type: FeedbackType,
+    tone: FeedbackTone,
+  ): Promise<ApiResponse<{ response: string }>> =>
+    apiFetch('/api/ai/feedback-response', {
+      method: 'POST',
+      body: JSON.stringify({ feedback_text: feedbackText, type, tone }),
+    }),
+
+  improveListing: (data: {
+    aspect: 'title' | 'description';
+    title: string;
+    description: string;
+  }): Promise<ApiResponse<{ title?: string; description?: string }>> =>
+    apiFetch('/api/ai/improve-listing', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  suggestPrice: (data: {
+    title: string;
+    current_price: number;
+    shipping_type: string;
+    shipping_cost: number;
+    competitor_lowest: number | null;
+    competitor_count: number;
+    top_competitors: Array<{ title: string; total_price: string; condition: string; location: string }>;
+  }): Promise<ApiResponse<PriceSuggestion>> =>
+    apiFetch('/api/ai/suggest-price', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+// ─── Price Monitor ────────────────────────────────────────────────────────────
+
+export const monitor = {
+  status: (): Promise<ApiResponse<MonitorItem[]>> =>
+    apiFetch('/api/monitor'),
+
+  checkOne: (id: string): Promise<ApiResponse<MonitorItem>> =>
+    apiFetch(`/api/monitor/${id}/check`, { method: 'POST' }),
+
+  checkAll: (): Promise<ApiResponse<MonitorItem[]>> =>
+    apiFetch('/api/monitor/check-all', { method: 'POST' }),
+
+  toggle: (id: string, enabled: boolean): Promise<ApiResponse<MonitorItem>> =>
+    apiFetch(`/api/monitor/${id}/toggle`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    }),
+
+  applyUpdate: (id: string, newPrice: number): Promise<ApiResponse<{ updated: boolean }>> =>
+    apiFetch(`/api/monitor/${id}/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ new_price: newPrice }),
     }),
 };
 

@@ -77,4 +77,11 @@ interface EbayClientInterface
      * Returns ['ebay_item_id' => string, 'end_time' => string].
      */
     public function reviseFixedPriceItem(array $listing): array;
+
+    /**
+     * Search eBay Germany for active fixed-price listings matching the given keywords.
+     * Uses the Browse API with an application token — no user auth required.
+     * Returns an array of competitor listings sorted cheapest-first.
+     */
+    public function searchItems(string $keywords, int $limit = 10): array;
 }
