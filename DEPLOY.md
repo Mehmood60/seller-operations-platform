@@ -1,192 +1,245 @@
-# Deploying free on an Oracle Cloud "Always Free" VM
+# Deployment Playbook — Seller Operations Platform
 
-This guide takes the app live for **$0/month** on a real Linux VM with a persistent
-disk and free HTTPS — no software needs to be installed on your work laptop
-(Windows 11 already includes the `ssh` command you need).
+This is the real, working deployment: a free **Oracle Cloud "Always Free" VM** running
+the app in Docker (PHP backend + Next.js frontend + Caddy for HTTPS), with JSON file
+storage on a persistent volume.
 
-The stack runs from [`docker-compose.prod.yml`](docker-compose.prod.yml):
-Caddy (HTTPS) → Next.js frontend + PHP backend, with data on a persistent volume.
-
----
-
-## Overview of what you'll do
-
-1. Create a free Oracle Cloud VM (ARM, persistent disk).
-2. Point a free domain (DuckDNS) at the VM's IP.
-3. Register a **Production** eBay keyset + redirect URL.
-4. Copy the code to the VM, fill in secrets, `docker compose up`.
-5. Connect eBay and go live.
-
-Budget ~45–60 minutes the first time.
+> ⚠️ **Never put secrets in this file.** API keys, eBay credentials, and encryption keys
+> live only in `backend/.env` and the root `.env` **on the server** (both git-ignored).
+> This file is committed to GitHub, so it must stay secret-free.
 
 ---
 
-## Step 1 — Create the free VM
+## 📌 Your deployment at a glance
 
-1. Sign up at <https://cloud.oracle.com> (credit card is for identity verification
-   only — "Always Free" resources are never charged).
-2. **Compute → Instances → Create instance.**
-   - Image: **Ubuntu 22.04**.
-   - Shape: **Ampere (ARM) VM.Standard.A1.Flex** — set 1–2 OCPU / 6–12 GB RAM
-     (all within the Always Free allowance). If ARM capacity is unavailable in
-     your region, use **VM.Standard.E2.1.Micro** (x86, also always-free).
-   - Under **Add SSH keys**, choose **Generate a key pair** and download the
-     private key (e.g. `oracle_key.key`).
-3. After it boots, copy the **Public IP address**.
-4. **Networking → open ports 80 and 443:**
-   - In the instance's **Virtual Cloud Network → Security List**, add two
-     **Ingress rules**: Source `0.0.0.0/0`, TCP, destination ports `80` and `443`.
+| Thing | Value |
+|---|---|
+| Cloud | Oracle Cloud Free Tier (region: **eu-frankfurt-1**, AD-2) |
+| VM shape | **VM.Standard.E2.1.Micro** (x86, 1 OCPU, 1 GB RAM — Always Free) |
+| OS | Ubuntu 22.04 |
+| Public IP | **89.168.112.111** *(ephemeral — can change if the VM is stopped/started; see Troubleshooting)* |
+| Domain | **sellarapp.duckdns.org** (DuckDNS, free) |
+| SSH login | `ubuntu@89.168.112.111` |
+| SSH key (local) | `D:\personal_mehmood\Onlinestore app\ssh-key-2026-07-08.key` |
+| App folder (server) | `~/seller-operations-platform` |
+| Live URL | **https://sellarapp.duckdns.org** |
 
-## Step 2 — Free domain (DuckDNS)
-
-eBay Production OAuth requires an `https://` redirect, which needs a domain.
-
-1. Go to <https://www.duckdns.org>, sign in (GitHub/Google).
-2. Create a subdomain, e.g. `myseller` → gives you `myseller.duckdns.org`.
-3. Set its IP to your VM's Public IP. Save.
-
-## Step 3 — Connect to the VM (no install needed)
-
-Open **PowerShell** on Windows and SSH in with the key you downloaded:
-
-```powershell
-# Lock down the key file's permissions (Windows requirement), then connect
-icacls "$HOME\Downloads\oracle_key.key" /inheritance:r /grant:r "$($env:USERNAME):(R)"
-ssh -i "$HOME\Downloads\oracle_key.key" ubuntu@YOUR_VM_PUBLIC_IP
+**Architecture (single domain):**
+```
+Internet ──443──> Caddy ──/api/*──> backend  (PHP, :8080)
+                       └──else────> frontend (Next.js, :3000)
 ```
 
-(If you can't use a local key at all, Oracle's browser **Cloud Shell** also works.)
+---
 
-## Step 4 — Install Docker on the VM
+## 🔑 Connect to the server
 
-You're root here, so this is allowed. Run on the VM:
+From **PowerShell** on your Windows machine:
+
+```powershell
+ssh -i "D:\personal_mehmood\Onlinestore app\ssh-key-2026-07-08.key" ubuntu@89.168.112.111
+```
+
+If SSH complains *"UNPROTECTED PRIVATE KEY FILE" / "bad permissions"*, fix the key ACL once:
+```powershell
+$key = "D:\personal_mehmood\Onlinestore app\ssh-key-2026-07-08.key"
+icacls $key /inheritance:r
+icacls $key /remove:g "*S-1-5-11" "*S-1-5-32-545"
+icacls $key /grant:r "$($env:USERNAME):(R)"
+```
+
+---
+
+## 🚀 Updating production (the common case — you changed code)
+
+This is what you'll do **every time you add a feature or fix a bug**:
+
+1. **On your Windows machine** — commit and push your changes to GitHub:
+   ```powershell
+   cd "D:\personal_mehmood\Onlinestore app\seller-operations-platform"
+   git add -A
+   git commit -m "your change description"
+   git push origin main
+   ```
+
+2. **On the server** — pull and rebuild:
+   ```bash
+   cd ~/seller-operations-platform
+   git pull
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+
+Docker rebuilds only what changed and restarts the containers. Takes ~5–15 min
+(the frontend build is the slow part on this small VM).
+
+### Faster partial updates
+- **Backend-only code change** → rebuild just the backend:
+  ```bash
+  docker compose -f docker-compose.prod.yml up -d --build backend
+  ```
+- **Changed a value in `backend/.env`** (eBay key, Groq key, etc.) → no rebuild needed,
+  just restart the backend:
+  ```bash
+  docker compose -f docker-compose.prod.yml restart backend
+  ```
+- **Changed the domain, `API_KEY`, or anything `NEXT_PUBLIC_*`** → the frontend bakes these
+  at build time, so you **must** rebuild the frontend:
+  ```bash
+  docker compose -f docker-compose.prod.yml up -d --build frontend
+  ```
+
+---
+
+## 🛠️ Everyday operations
 
 ```bash
-curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker ubuntu
-newgrp docker            # apply the group without re-login
-# Ubuntu firewall (in addition to Oracle's security list):
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80  -j ACCEPT
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+cd ~/seller-operations-platform
+
+# See running containers + health
+docker compose -f docker-compose.prod.yml ps
+
+# Watch logs (all, or one service)
+docker compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f backend
+docker compose -f docker-compose.prod.yml logs -f caddy
+
+# Restart everything / one service
+docker compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.prod.yml restart backend
+
+# Stop (data on the volume is preserved)
+docker compose -f docker-compose.prod.yml down
+
+# Start again
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### Back up your data (JSON storage)
+Your eBay tokens, listings, orders, etc. live in the `seller_data` Docker volume.
+```bash
+cd ~/seller-operations-platform
+# Find the exact volume name if unsure:
+docker volume ls | grep seller_data
+# Back it up to a dated tarball in the current folder:
+docker run --rm \
+  -v seller-operations-platform_seller_data:/data \
+  -v "$PWD":/backup alpine \
+  tar czf /backup/data-backup-$(date +%F).tgz -C /data .
+```
+Copy the tarball to your laptop with `scp` (run on Windows):
+```powershell
+scp -i "D:\personal_mehmood\Onlinestore app\ssh-key-2026-07-08.key" ubuntu@89.168.112.111:/home/ubuntu/seller-operations-platform/data-backup-*.tgz .
+```
+
+---
+
+## 🧯 Troubleshooting
+
+### Site won't load / HTTPS certificate error
+```bash
+docker compose -f docker-compose.prod.yml logs caddy
+```
+- Confirm DNS points at the VM: `getent hosts sellarapp.duckdns.org` → should show the VM's IP.
+- Confirm ports 80/443 are open at **both** layers:
+  - Oracle: VCN → Security → Default Security List → Security rules (ingress 80, 443, 0.0.0.0/0).
+  - Ubuntu: `sudo iptables -L INPUT -n --line-numbers` → ACCEPT 80 & 443 **above** the REJECT line.
+- Let's Encrypt needs port **80** reachable to issue the certificate.
+
+### Public IP changed (after stopping/starting the VM)
+The IP is **ephemeral**. If it changes:
+1. Get the new IP: Oracle console → Instance → Public IP.
+2. Update DuckDNS: <https://www.duckdns.org> → set the new IP → update.
+3. (Optional, recommended) Reserve the IP in Oracle so it never changes:
+   Instance → Attached VNICs → VNIC → IPv4 Addresses → edit → **Reserved public IP**.
+
+### Frontend build fails / runs out of memory
+```bash
+free -h    # confirm Swap shows 4.0Gi
+```
+If swap is missing (e.g. after a fresh VM), recreate it:
+```bash
+sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+### eBay login fails / redirects wrong
+- The redirect URL registered for the RuName at **developer.ebay.com** (Production keyset →
+  User Tokens) must be exactly: `https://sellarapp.duckdns.org/api/auth/ebay/callback`
+- `backend/.env` must have `EBAY_SANDBOX=false`, `APP_URL` and `FRONTEND_URL` =
+  `https://sellarapp.duckdns.org`, and the Production `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` /
+  `EBAY_REDIRECT_URI` (RuName). After editing: `restart backend`.
+
+### Check container health / a service keeps restarting
+```bash
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs --tail=100 backend
+```
+
+---
+
+## 🌱 First-time server setup (reference — already done once)
+
+Kept here so you can rebuild from scratch on a new VM if ever needed.
+
+**1. Create the VM** — Oracle Cloud → Compute → Instance:
+Ubuntu 22.04, shape **VM.Standard.E2.1.Micro** (Always Free; if you can get **Ampere A1.Flex**
+with 6 GB it's better — pick the matching aarch64 image), public subnet, **generate + download SSH key**.
+Assign an ephemeral public IP (Instance → VNIC → IPv4 Addresses → edit → Ephemeral).
+
+**2. Open firewall** — Oracle Security List ingress TCP 80 & 443 from `0.0.0.0/0`, then on the VM:
+```bash
+sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+sudo iptables -I INPUT -p tcp --dport 443 -j ACCEPT
 sudo netfilter-persistent save
 ```
 
-## Step 5 — Get the code onto the VM
+**3. Point the domain** — DuckDNS: set `sellarapp` → the VM's public IP.
 
-Easiest is Git (push your repo to GitHub/GitLab first, then clone). On the VM:
-
+**4. Add swap** (needed for the build on 1 GB RAM):
 ```bash
-sudo apt-get update && sudo apt-get install -y git
-git clone YOUR_REPO_URL seller-app
-cd seller-app
+sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-> `backend/.env` and `backend/data/` are git-ignored (correctly), so they won't
-> come across — you'll create the `.env` fresh in the next step.
-
-## Step 6 — eBay Production credentials
-
-1. At <https://developer.ebay.com> → **My Account → Application Keys**, switch to
-   the **Production** keyset (create one if needed). Note the **App ID (Client ID)**,
-   **Cert ID (Client Secret)**, and **Dev ID**.
-2. **User Tokens → Get a Token from eBay via Your Application → Add eBay Redirect URL**
-   (this creates a **RuName**). Set:
-   - **Your auth accepted URL:** `https://myseller.duckdns.org/api/auth/ebay/callback`
-   - **Your privacy policy URL:** any page you control (a simple text page is fine).
-   - eBay generates a **RuName** string — copy it.
-
-## Step 7 — Configure secrets on the VM
-
-Create the two config files. First the root `.env` used by compose:
-
+**5. Install Docker:**
 ```bash
-# in the seller-app directory
-cat > .env <<'EOF'
-DOMAIN=myseller.duckdns.org
-API_KEY=PASTE_A_STRONG_SECRET_HERE
-EOF
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker ubuntu
+newgrp docker
 ```
 
-Then the backend env (copy the example and edit it):
-
+**6. Clone the code:**
 ```bash
-cp backend/.env.example backend/.env
-nano backend/.env
+git clone https://github.com/Mehmood60/seller-operations-platform.git
+cd seller-operations-platform
 ```
 
-Set at least these values for production:
-
-```ini
-APP_ENV=production
-APP_URL=https://myseller.duckdns.org
-FRONTEND_URL=https://myseller.duckdns.org
-STORAGE_DRIVER=json
-
-# MUST match the API_KEY in the root .env above
-API_KEY=PASTE_A_STRONG_SECRET_HERE
-
-EBAY_CLIENT_ID=your-production-app-id
-EBAY_CLIENT_SECRET=your-production-cert-id
-EBAY_DEV_ID=your-dev-id
-EBAY_REDIRECT_URI=your-RuName-from-step-6   # the RuName, NOT the URL
-EBAY_SITE_ID=3                              # 3=UK, 0=US, 77=DE ...
-
-EBAY_SANDBOX=false                          # <-- flip to production
-
-# Exactly 32 characters (generate: openssl rand -hex 16)
-ENCRYPTION_KEY=your-32-char-key
-
-# Free AI key from https://console.groq.com
-GROQ_API_KEY=gsk_your-key
+**7. Create the config** — copy your local `backend/.env` up with `scp` (from Windows):
+```powershell
+scp -i "D:\personal_mehmood\Onlinestore app\ssh-key-2026-07-08.key" "D:\personal_mehmood\Onlinestore app\seller-operations-platform\backend\.env" ubuntu@<VM_IP>:/home/ubuntu/seller-operations-platform/backend/.env
+```
+Then on the server, set the production values:
+```bash
+cd ~/seller-operations-platform/backend
+sed -i 's|^APP_ENV=.*|APP_ENV=production|' .env
+sed -i 's|^APP_URL=.*|APP_URL=https://sellarapp.duckdns.org|' .env
+sed -i 's|^FRONTEND_URL=.*|FRONTEND_URL=https://sellarapp.duckdns.org|' .env
+sed -i "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 16)|" .env
+# root .env for docker-compose (domain + matching API key):
+cd ~/seller-operations-platform
+echo "DOMAIN=sellarapp.duckdns.org" > .env
+grep '^API_KEY=' backend/.env >> .env
 ```
 
-Generate strong values right on the VM:
+**8. Register the eBay redirect** — developer.ebay.com → Production keyset → User Tokens →
+auth accepted URL = `https://sellarapp.duckdns.org/api/auth/ebay/callback`.
 
+**9. Deploy:**
 ```bash
-openssl rand -hex 32   # -> API_KEY (use the SAME value in both files)
-openssl rand -hex 16   # -> ENCRYPTION_KEY (32 chars)
-```
-
-## Step 8 — Launch
-
-```bash
+cd ~/seller-operations-platform
 docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml logs -f
 ```
 
-Caddy will fetch a TLS certificate automatically (give it ~30 s on first run).
-Then open **https://myseller.duckdns.org** — the app is live.
-
-## Step 9 — Connect eBay & verify
-
-1. Go to **Settings** in the app → **Connect eBay** → authorize your real account.
-2. Trigger a sync; confirm listings/orders load.
-3. Data persists across restarts (stored on the `seller_data` volume).
-
----
-
-## Everyday operations
-
-```bash
-# Update after pushing new code
-git pull && docker compose -f docker-compose.prod.yml up -d --build
-
-# View logs / restart / stop
-docker compose -f docker-compose.prod.yml logs -f
-docker compose -f docker-compose.prod.yml restart
-docker compose -f docker-compose.prod.yml down        # stops; keeps data
-
-# Back up the JSON data volume
-docker run --rm -v seller-app_seller_data:/data -v $PWD:/backup alpine \
-  tar czf /backup/data-backup.tgz -C /data .
-```
-
-## Notes & gotchas
-
-- **`NEXT_PUBLIC_*` are baked at build time.** If you change `DOMAIN`, you must
-  rebuild the frontend (`up -d --build`), not just restart it.
-- The PHP backend uses the built-in `php -S` server. Fine for a single-seller /
-  low-traffic app; not intended for high concurrency.
-- **Never commit `backend/.env` or the root `.env`** — both are git-ignored already.
-- DuckDNS IPs can go stale if the VM IP changes; reserve a static public IP in
-  Oracle (also free) to avoid this.
+Then open **https://sellarapp.duckdns.org** and connect eBay from the Settings page.
