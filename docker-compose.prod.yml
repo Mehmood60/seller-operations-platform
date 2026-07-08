@@ -1,0 +1,78 @@
+# docker-compose.prod.yml — public production deployment (single domain + HTTPS)
+#
+# Prereqs on the server (see DEPLOY.md):
+#   1. A root  .env  file next to this one containing:
+#          DOMAIN=your-app.duckdns.org
+#          API_KEY=<same value as backend/.env API_KEY>
+#   2. backend/.env  filled with real production credentials.
+#
+# Usage on the server:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml logs -f
+#   docker compose -f docker-compose.prod.yml down          # stop (data kept)
+#
+# Unlike docker-compose.yml, ports are NOT published for backend/frontend —
+# only Caddy is exposed to the internet. It terminates TLS and proxies inward.
+
+services:
+
+  backend:
+    build:
+      context: ./backend
+      target: production
+    env_file:
+      - ./backend/.env
+    volumes:
+      - seller_data:/var/www/data
+    restart: unless-stopped
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "php", "-r", "echo file_get_contents('http://localhost:8080/api/sync/status');"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      target: runner
+      args:
+        # Public env baked into the JS bundle at build time.
+        # Same origin as the site itself -> API calls hit https://DOMAIN/api/...
+        NEXT_PUBLIC_API_BASE_URL: https://${DOMAIN}
+        NEXT_PUBLIC_API_KEY: ${API_KEY}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: https://${DOMAIN}
+      NEXT_PUBLIC_API_KEY: ${API_KEY}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+
+volumes:
+  seller_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local

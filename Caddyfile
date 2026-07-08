@@ -1,0 +1,23 @@
+# Caddyfile — automatic HTTPS reverse proxy for production.
+#
+# Caddy fetches + renews a free Let's Encrypt certificate for {$DOMAIN}
+# automatically (needs ports 80 + 443 open and DNS pointing at this VM).
+#
+# Routing (single origin):
+#   https://DOMAIN/api/*  -> backend  (PHP, port 8080)
+#   https://DOMAIN/*      -> frontend (Next.js, port 3000)
+
+{$DOMAIN} {
+	encode gzip
+
+	# Backend API — everything under /api/
+	@api path /api/*
+	handle @api {
+		reverse_proxy backend:8080
+	}
+
+	# Everything else -> Next.js frontend
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

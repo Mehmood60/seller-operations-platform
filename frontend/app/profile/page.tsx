@@ -110,20 +110,23 @@ function validateForm(form: ReturnType<typeof blankProfile>): FieldErrors {
     errs.avatar_url = 'Avatar URL must start with https://';
 
   // ── Address ───────────────────────────────────────────────────────────────
-  if (form.address.city && !NAME_RE.test(form.address.city))
-    errs.city = 'City may only contain letters, spaces, and hyphens.';
+  const addr = form.address;
+  if (addr) {
+    if (addr.city && !NAME_RE.test(addr.city))
+      errs.city = 'City may only contain letters, spaces, and hyphens.';
 
-  if (form.address.state && !NAME_RE.test(form.address.state))
-    errs.state = 'State / County may only contain letters, spaces, and hyphens.';
+    if (addr.state && !NAME_RE.test(addr.state))
+      errs.state = 'State / County may only contain letters, spaces, and hyphens.';
 
-  if (form.address.postal_code) {
-    if (!POST_RE.test(form.address.postal_code))
-      errs.postal_code = 'Postal code may only contain letters, digits, spaces, and hyphens.';
-    else if (!/\d/.test(form.address.postal_code))
-      errs.postal_code = 'Postal code must contain at least one number.';
+    if (addr.postal_code) {
+      if (!POST_RE.test(addr.postal_code))
+        errs.postal_code = 'Postal code may only contain letters, digits, spaces, and hyphens.';
+      else if (!/\d/.test(addr.postal_code))
+        errs.postal_code = 'Postal code must contain at least one number.';
+    }
+    if (addr.country && !CC_RE.test(addr.country))
+      errs.country = 'Country must be a 2-letter code (e.g. GB, US).';
   }
-  if (form.address.country && !CC_RE.test(form.address.country))
-    errs.country = 'Country must be a 2-letter code (e.g. GB, US).';
 
   // ── Store ─────────────────────────────────────────────────────────────────
   if (form.store.phone) {
