@@ -5,8 +5,8 @@ import AppShell from '@/components/AppShell';
 import { PreferencesProvider } from '@/components/PreferencesProvider';
 
 export const metadata: Metadata = {
-  title: 'eBay Seller Platform',
-  description: 'Manage your eBay shop operations',
+  title: 'SellSmart',
+  description: 'Smart tools to manage and grow your online store',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

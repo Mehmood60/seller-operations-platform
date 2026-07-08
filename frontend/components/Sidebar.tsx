@@ -10,11 +10,11 @@ import {
   MessageSquareReply,
   Settings,
   ShoppingCart,
-  Store,
   Tag,
   TrendingUp,
   UserCircle,
 } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
 
 const NAV_ITEMS = [
@@ -42,9 +42,8 @@ export default function Sidebar() {
   return (
     <aside className="w-56 flex-shrink-0 bg-[#0f3460] text-white flex flex-col">
       {/* Logo */}
-      <div className="flex items-center gap-2 px-5 py-5 border-b border-white/10">
-        <Store className="h-6 w-6 text-blue-300" />
-        <span className="font-bold text-base tracking-wide">eBay Seller</span>
+      <div className="flex items-center px-5 py-5 border-b border-white/10">
+        <Logo size={30} tone="dark" />
       </div>
 
       {/* Navigation */}
@@ -86,7 +85,7 @@ export default function Sidebar() {
       </div>
 
       <div className="px-5 py-3 text-xs text-white/40 border-t border-white/10">
-        V1 — Seller Platform
+        SellSmart · v1
       </div>
     </aside>
   );

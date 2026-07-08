@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { Store } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { userAuth } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import PasswordInput from '@/components/ui/PasswordInput';
@@ -90,11 +90,8 @@ export default function RegisterPage() {
   return (
     <div className="w-full max-w-sm">
       {/* Logo */}
-      <div className="flex items-center justify-center gap-2 mb-8">
-        <div className="bg-[#0f3460] p-2 rounded-lg">
-          <Store className="h-6 w-6 text-blue-300" />
-        </div>
-        <span className="font-bold text-xl text-gray-800">eBay Seller</span>
+      <div className="flex items-center justify-center mb-8">
+        <Logo size={40} tone="light" />
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
