@@ -81,7 +81,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </button>
           <Logo size={26} tone="light" />
         </header>
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

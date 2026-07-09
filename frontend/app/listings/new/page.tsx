@@ -740,7 +740,7 @@ export default function NewListingPage() {
           {/* Origin */}
           <div>
             <p className="text-xs text-gray-500 mb-1.5">Herkunftsland</p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {ORIGINS.map(o => (
                 <button key={o.id} onClick={() => handleOriginChange(o.id)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
@@ -867,14 +867,14 @@ export default function NewListingPage() {
                 <input type="text" value={s.name}
                   onChange={e => updateSpecific(i, 'name', e.target.value)}
                   placeholder="Merkmal (z.B. Farbe)"
-                  className="w-40 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className="w-28 sm:w-40 flex-shrink-0 min-w-0 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
                 <input type="text" value={s.value}
                   onChange={e => updateSpecific(i, 'value', e.target.value)}
                   placeholder="Wert (z.B. Schwarz)"
-                  className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className="flex-1 min-w-0 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
-                <button onClick={() => removeSpecific(i)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
+                <button onClick={() => removeSpecific(i)} className="p-1.5 flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors">
                   <X className="h-4 w-4" />
                 </button>
               </div>
