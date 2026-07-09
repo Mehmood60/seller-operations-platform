@@ -1,9 +1,11 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Menu } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import Sidebar from '@/components/Sidebar';
+import Logo from '@/components/Logo';
 
 // Routes that don't require authentication and have their own full-page layout.
 const AUTH_ROUTES = ['/login', '/register'];
@@ -12,8 +14,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const pathname = usePathname();
   const router   = useRouter();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isAuthRoute = AUTH_ROUTES.includes(pathname);
+
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -60,9 +68,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        {/* Mobile top bar with hamburger — hidden on large screens */}
+        <header className="lg:hidden flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+            className="-ml-1 rounded-lg p-1.5 text-gray-600 hover:bg-gray-100"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+          <Logo size={26} tone="light" />
+        </header>
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );
