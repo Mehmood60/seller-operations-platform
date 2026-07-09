@@ -130,7 +130,7 @@ export default function MonitorPage() {
   return (
     <div className="space-y-5 w-full">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Price Monitor</h1>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -140,8 +140,8 @@ export default function MonitorPage() {
         <button
           onClick={handleCheckAll}
           disabled={checkingAll || activeCount === 0}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#0f3460] text-white text-sm font-medium rounded-lg
-            hover:bg-[#0a2444] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex flex-shrink-0 items-center justify-center gap-2 px-4 py-2 bg-[#0f3460] text-white text-sm font-medium rounded-lg
+            whitespace-nowrap hover:bg-[#0a2444] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {checkingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           Check All Active
@@ -153,7 +153,7 @@ export default function MonitorPage() {
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardBody className="flex items-center gap-3">
             <Activity className="h-8 w-8 text-[#0f3460] flex-shrink-0" />

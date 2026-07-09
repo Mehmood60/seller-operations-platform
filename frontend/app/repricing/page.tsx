@@ -190,7 +190,7 @@ export default function RepricingPage() {
     <div className="space-y-5 w-full">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp className="h-6 w-6 text-blue-600" />
@@ -202,7 +202,7 @@ export default function RepricingPage() {
         </div>
         <button
           onClick={fetchListings}
-          className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-lg text-sm font-medium transition-colors"
+          className="flex flex-shrink-0 self-start items-center gap-1.5 px-3 py-2 border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
         >
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>

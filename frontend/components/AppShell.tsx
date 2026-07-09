@@ -41,7 +41,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // ── Loading splash ─────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
+      <div className="flex h-dvh items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-3 text-gray-500">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#0f3460] border-t-transparent" />
           <span className="text-sm">Loading…</span>
@@ -56,7 +56,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (isAuthenticated) return null;
 
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-dvh bg-gray-50 flex items-center justify-center p-4">
         {children}
       </div>
     );
@@ -67,11 +67,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh overflow-hidden">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Mobile top bar with hamburger — hidden on large screens */}
-        <header className="lg:hidden flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3">
+        <header className="lg:hidden flex flex-shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4 py-3">
           <button
             onClick={() => setSidebarOpen(true)}
             aria-label="Open menu"

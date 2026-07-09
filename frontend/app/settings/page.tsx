@@ -197,14 +197,14 @@ export default function SettingsPage() {
       {/* API Info */}
       <Card>
         <CardHeader><h2 className="font-semibold">Configuration</h2></CardHeader>
-        <CardBody className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-500">API Backend</span>
-            <span className="font-mono text-xs">{API_BASE}</span>
+        <CardBody className="space-y-3 text-sm">
+          <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4">
+            <span className="text-gray-500 flex-shrink-0">API Backend</span>
+            <span className="font-mono text-xs break-all sm:text-right">{API_BASE}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">eBay OAuth Callback</span>
-            <span className="font-mono text-xs">{API_BASE}/api/auth/ebay/callback</span>
+          <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4">
+            <span className="text-gray-500 flex-shrink-0">eBay OAuth Callback</span>
+            <span className="font-mono text-xs break-all sm:text-right">{API_BASE}/api/auth/ebay/callback</span>
           </div>
         </CardBody>
       </Card>

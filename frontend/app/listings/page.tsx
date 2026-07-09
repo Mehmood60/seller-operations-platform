@@ -73,8 +73,8 @@ export default function ListingsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-bold text-gray-900">Listings</h1>
           {autoSyncing && (
             <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
