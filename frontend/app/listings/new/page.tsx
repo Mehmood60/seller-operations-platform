@@ -587,7 +587,7 @@ export default function NewListingPage() {
         </div>
 
         {/* Condition + Category */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Zustand</label>
             <select value={form.condition} onChange={e => set('condition', e.target.value)}
@@ -703,7 +703,7 @@ export default function NewListingPage() {
         </div>
 
         {/* Price / Quantity / SKU */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Preis (EUR)</label>
             <div className="relative">
@@ -754,7 +754,7 @@ export default function NewListingPage() {
           </div>
 
           {/* Free/Paid + cost */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-gray-500 mb-1.5">Versandkosten</p>
               <div className="space-y-2">
@@ -789,7 +789,7 @@ export default function NewListingPage() {
           </div>
 
           {/* Processing + Delivery days */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-gray-500 mb-1.5">Bearbeitungszeit (Werktage)</p>
               <div className="flex items-center gap-2">
@@ -943,7 +943,7 @@ export default function NewListingPage() {
               </div>
             </div>
           )}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               disabled={!canSave || saving || !!publishedListing}
               onClick={handleSaveDraft}

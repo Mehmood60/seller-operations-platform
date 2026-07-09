@@ -869,7 +869,7 @@ export default function EditListingPage() {
             <div className="px-4 py-3 space-y-3 border-t border-white/40">
 
               {/* Dimension bars */}
-              <div className="grid grid-cols-6 gap-1.5 text-center">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center">
                 {(Object.entries(health.dims) as [string, number][]).map(([dim, pts]) => {
                   const max = { title: 20, images: 20, specifics: 20, description: 15, category: 15, source_url: 10 }[dim] ?? 20;
                   const pct = Math.round((pts / max) * 100);
@@ -1037,7 +1037,7 @@ export default function EditListingPage() {
         </div>
 
         {/* Condition + Category */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Condition</label>
             <select value={form.condition} onChange={e => set('condition', e.target.value)}
@@ -1153,7 +1153,7 @@ export default function EditListingPage() {
         </div>
 
         {/* Price / Quantity / SKU */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Price (EUR)</label>
             <div className="relative">
@@ -1202,7 +1202,7 @@ export default function EditListingPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-gray-500 mb-1.5">Shipping cost</p>
               <div className="space-y-2">
@@ -1236,7 +1236,7 @@ export default function EditListingPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-gray-500 mb-1.5">Processing time (business days)</p>
               <div className="flex items-center gap-2">
@@ -1425,7 +1425,7 @@ export default function EditListingPage() {
                   </div>
                 </div>
               )}
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   disabled={!canSave || saving || !!publishedListing}
                   onClick={handleSaveDraft}
