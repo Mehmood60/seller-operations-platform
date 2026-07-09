@@ -769,7 +769,7 @@ export default function EditListingPage() {
         <p className="text-xs text-gray-500 mb-3">
           Save URL for price monitoring — or re-analyze to fill all fields from the product page.
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <input type="url" value={url}
             onChange={e => { setUrl(e.target.value); setUrlSaved(false); }}
             onKeyDown={e => e.key === 'Enter' && handleAnalyze()}

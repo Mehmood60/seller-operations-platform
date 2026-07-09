@@ -484,7 +484,7 @@ export default function NewListingPage() {
             Link von AliExpress, DHgate oder einer anderen Dropshipping-Seite einfügen.
             Die KI liest das Produkt und füllt das Formular automatisch auf Deutsch aus.
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input type="url" value={url}
               onChange={e => setUrl(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAnalyze()}
