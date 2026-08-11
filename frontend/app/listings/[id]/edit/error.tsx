@@ -19,16 +19,16 @@ export default function EditListingError({
       <div className="bg-white rounded-xl border border-red-200 p-8 max-w-lg w-full space-y-4">
         <div className="flex items-center gap-3 text-red-600">
           <AlertCircle className="h-6 w-6 flex-shrink-0" />
-          <h2 className="text-lg font-semibold">Fehler beim Laden</h2>
+          <h2 className="text-lg font-semibold">Failed to load</h2>
         </div>
         <p className="text-sm text-gray-600">
-          {error.message || 'Ein unerwarteter Fehler ist aufgetreten.'}
+          {error.message || 'An unexpected error occurred.'}
         </p>
         <button
           onClick={reset}
           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
         >
-          Erneut versuchen
+          Try again
         </button>
       </div>
     </div>

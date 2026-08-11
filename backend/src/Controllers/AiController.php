@@ -37,8 +37,8 @@ class AiController
             // return is invented. Fail loudly instead of handing over a fake listing.
             if (!empty($scraped['blocked']) && empty($scraped['images'])) {
                 Response::error(
-                    ($scraped['warning'] ?: 'Die Produktseite konnte nicht ausgelesen werden.')
-                    . ' Bitte "Manuelle Eingabe" verwenden.',
+                    ($scraped['warning'] ?: 'The product page could not be read.')
+                    . ' Please use "Manual Entry" instead.',
                     422
                 );
                 return;

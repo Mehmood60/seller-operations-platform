@@ -517,7 +517,7 @@ XML;
             $data = json_decode((string)$response->getBody(), true);
             return $data['access_token'] ?? '';
         } catch (GuzzleException $e) {
-            throw new \RuntimeException('App-Token konnte nicht abgerufen werden: ' . $e->getMessage(), 0, $e);
+            throw new \RuntimeException('Could not obtain app token: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -583,7 +583,7 @@ XML;
         $conditionId = $this->mapConditionId($listing['condition'] ?? 'Neu');
         $categoryId  = $listing['category']['ebay_category_id'] ?? '';
         if ($categoryId === '') {
-            throw new \InvalidArgumentException('Keine eBay-Kategorie-ID angegeben. Bitte wähle eine Kategorie aus und versuche es erneut.');
+            throw new \InvalidArgumentException('No eBay category ID provided. Please select a category and try again.');
         }
         $sku         = htmlspecialchars($listing['sku'] ?? '', ENT_XML1);
         $siteInfo    = $this->getSiteInfo();

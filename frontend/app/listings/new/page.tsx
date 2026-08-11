@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Sparkles, Loader2, AlertCircle, X,
-  Languages, Upload, ImageIcon, Search, CheckCircle, ExternalLink,
+  Languages, Upload, ImageIcon, Search, CheckCircle, ExternalLink, Link2,
 } from 'lucide-react';
 import { ai as aiApi, listings as listingsApi } from '@/lib/api';
 import { RichTextEditor } from '@/components/RichTextEditor';
@@ -65,9 +65,9 @@ const CONDITIONS = [
 ];
 
 const ORIGINS: { id: ShippingOrigin; label: string }[] = [
-  { id: 'DE', label: '🇩🇪 Deutschland' },
+  { id: 'DE', label: '🇩🇪 Germany' },
   { id: 'CN', label: '🇨🇳 China' },
-  { id: 'UNKNOWN', label: '🌍 Sonstige' },
+  { id: 'UNKNOWN', label: '🌍 Other' },
 ];
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -108,6 +108,7 @@ export default function NewListingPage() {
 
   // add image
   const [uploadError, setUploadError]   = useState<string | null>(null);
+  const [imageUrlInput, setImageUrlInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
 
@@ -145,7 +146,7 @@ export default function NewListingPage() {
 
     if (missing.length === 0) {
       console.warn('[AI Solve] Could not extract missing fields. publishError:', publishError);
-      setAiSolveError('Fehlende Felder konnten nicht erkannt werden. Bitte Felder manuell ausfüllen.');
+      setAiSolveError('Could not detect the missing fields. Please fill them in manually.');
       return;
     }
     console.log('[AI Solve] Sending missing fields to AI:', missing);
@@ -172,7 +173,7 @@ export default function NewListingPage() {
         return { ...f, item_specifics: [...updated, ...toAdd] };
       });
     } catch (err: unknown) {
-      setAiSolveError(err instanceof Error ? err.message : 'KI konnte die fehlenden Felder nicht ausfüllen.');
+      setAiSolveError(err instanceof Error ? err.message : 'AI could not fill the missing fields.');
     } finally {
       setSolvingAI(false);
     }
@@ -200,6 +201,7 @@ export default function NewListingPage() {
     setShowCatDrop(false);
     setCatSearchError(null);
     setUploadError(null);
+    setImageUrlInput('');
   };
 
   // ── AI analyze ────────────────────────────────────────────────────────────
@@ -241,7 +243,7 @@ export default function NewListingPage() {
       const catQuery = (s.category_suggestion || s.title || '').trim();
       if (catQuery) void handleSearchCategories(catQuery);
     } catch (err: unknown) {
-      setAnalyzeError(err instanceof Error ? err.message : 'Analyse fehlgeschlagen.');
+      setAnalyzeError(err instanceof Error ? err.message : 'Analysis failed.');
     } finally {
       setAnalyzing(false);
     }
@@ -258,7 +260,7 @@ export default function NewListingPage() {
       const res = await aiApi.translate(form.title, form.description);
       setTranslation(res.data);
     } catch (err: unknown) {
-      setTranslateError(err instanceof Error ? err.message : 'Übersetzung fehlgeschlagen.');
+      setTranslateError(err instanceof Error ? err.message : 'Translation failed.');
     } finally {
       setTranslating(false);
     }
@@ -296,12 +298,12 @@ export default function NewListingPage() {
     const readers: Promise<string>[] = toRead.map(
       file => new Promise((resolve, reject) => {
         if (!file.type.startsWith('image/')) {
-          reject(new Error(`"${file.name}" ist kein Bild.`));
+          reject(new Error(`"${file.name}" is not an image.`));
           return;
         }
         const reader = new FileReader();
         reader.onload  = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error(`Fehler beim Lesen von "${file.name}".`));
+        reader.onerror = () => reject(new Error(`Could not read "${file.name}".`));
         reader.readAsDataURL(file);
       })
     );
@@ -310,7 +312,7 @@ export default function NewListingPage() {
       const dataUrls: string[] = [];
       for (const r of results) {
         if (r.status === 'fulfilled') dataUrls.push(r.value);
-        else setUploadError(r.reason?.message ?? 'Upload-Fehler');
+        else setUploadError(r.reason?.message ?? 'Upload failed');
       }
       if (dataUrls.length) set('images', [...form.images, ...dataUrls]);
     });
@@ -321,6 +323,34 @@ export default function NewListingPage() {
 
   const removeImage = (i: number) =>
     set('images', form.images.filter((_, j) => j !== i));
+
+  // ── Add images by URL ─────────────────────────────────────────────────────
+  // Escape hatch for sites the scraper cannot read (Amazon blocks it): the seller
+  // copies image addresses from their own browser and pastes them here.
+
+  const addImageUrls = () => {
+    setUploadError(null);
+    const pasted = imageUrlInput.split(/[\s,]+/).map(u => u.trim()).filter(Boolean);
+    if (pasted.length === 0) return;
+
+    const valid = pasted.filter(u => /^https?:\/\/\S+$/i.test(u));
+    if (valid.length === 0) {
+      setUploadError('Paste an image address starting with http:// or https://');
+      return;
+    }
+
+    const fresh = valid.filter(u => !form.images.includes(u)).slice(0, 12 - form.images.length);
+    if (fresh.length === 0) {
+      setUploadError('Already added — or the 12-image limit is reached.');
+      return;
+    }
+    if (fresh.length < valid.length) {
+      setUploadError(`Added ${fresh.length} of ${valid.length} — duplicates and anything past 12 images were skipped.`);
+    }
+
+    set('images', [...form.images, ...fresh]);
+    setImageUrlInput('');
+  };
 
   // ── Item specifics ────────────────────────────────────────────────────────
 
@@ -369,7 +399,7 @@ export default function NewListingPage() {
       });
       router.push('/listings');
     } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : 'Entwurf konnte nicht gespeichert werden.');
+      setSaveError(err instanceof Error ? err.message : 'Draft could not be saved.');
     } finally {
       setSaving(false);
     }
@@ -391,10 +421,10 @@ export default function NewListingPage() {
         setCatSuggestions(suggestions);
         setShowCatDrop(true);
       } else {
-        setCatSearchError((res.meta as Record<string, string>)?.suggest_error ?? 'Keine Vorschläge gefunden. Kategorie-ID manuell eingeben.');
+        setCatSearchError((res.meta as Record<string, string>)?.suggest_error ?? 'No suggestions found. Enter the category ID manually.');
       }
     } catch (err: unknown) {
-      setCatSearchError(err instanceof Error ? err.message : 'Kategoriesuche fehlgeschlagen.');
+      setCatSearchError(err instanceof Error ? err.message : 'Category search failed.');
     } finally {
       setSearchingCats(false);
     }
@@ -431,7 +461,7 @@ export default function NewListingPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setPublishedListing(published.data as any);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Veröffentlichung fehlgeschlagen.';
+      const msg = err instanceof Error ? err.message : 'Publishing failed.';
       setPublishError(msg);
       const missing = extractMissing(msg);
       if (missing.length > 0) {
@@ -463,7 +493,7 @@ export default function NewListingPage() {
         <Link href="/listings" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">Neues Inserat erstellen</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Create New Listing</h1>
       </div>
 
       {/* Tabs */}
@@ -475,7 +505,7 @@ export default function NewListingPage() {
             }`}
           >
             {t === 'ai' && <Sparkles className="h-3.5 w-3.5" />}
-            {t === 'ai' ? 'KI-Assistent' : 'Manuelle Eingabe'}
+            {t === 'ai' ? 'AI Assistant' : 'Manual Entry'}
           </button>
         ))}
       </div>
@@ -483,11 +513,11 @@ export default function NewListingPage() {
       {/* AI URL input */}
       {tab === 'ai' && (
         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-5">
-          <p className="text-sm font-semibold text-gray-800 mb-0.5">Produkt-URL</p>
+          <p className="text-sm font-semibold text-gray-800 mb-0.5">Product URL</p>
           <p className="text-xs text-gray-500 mb-3">
-            Link von AliExpress, DHgate oder einer anderen Dropshipping-Seite einfügen.
-            Die KI liest das Produkt und füllt das Formular automatisch auf Deutsch aus.
-            Hinweis: Amazon blockiert das Auslesen — dort wird nur das Hauptbild geladen.
+            Paste a link from AliExpress, DHgate or any other dropshipping site.
+            The AI reads the product page and fills the form in German automatically.
+            Note: Amazon blocks page reading — only the main image can be loaded from there.
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <input type="url" value={url}
@@ -500,8 +530,8 @@ export default function NewListingPage() {
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors whitespace-nowrap"
             >
               {analyzing
-                ? <><Loader2 className="h-4 w-4 animate-spin" />Analysiert…</>
-                : <><Sparkles className="h-4 w-4" />Mit KI analysieren</>
+                ? <><Loader2 className="h-4 w-4 animate-spin" />Analyzing…</>
+                : <><Sparkles className="h-4 w-4" />Analyze with AI</>
               }
             </button>
           </div>
@@ -517,7 +547,7 @@ export default function NewListingPage() {
           )}
           {analyzed && !analyzeError && !analyzeWarning && (
             <p className="mt-3 text-sm text-green-700 font-medium">
-              ✓ KI-Analyse abgeschlossen — Formular wurde auf Deutsch ausgefüllt. Bitte prüfen und anpassen.
+              ✓ AI analysis complete — the form was filled in German. Please review and adjust.
             </p>
           )}
         </div>
@@ -529,9 +559,9 @@ export default function NewListingPage() {
         {/* Images */}
         <div>
           <p className="text-sm font-medium text-gray-700 mb-2">
-            Bilder
+            Images
             <span className="ml-1.5 text-xs font-normal text-gray-400">
-              ({form.images.length} / 12 — hover zum Entfernen)
+              ({form.images.length} / 12 — hover to remove)
             </span>
           </p>
           <div className="flex gap-2 flex-wrap">
@@ -554,9 +584,9 @@ export default function NewListingPage() {
               </div>
             )}
           </div>
-          {/* File upload */}
+          {/* File upload + paste by URL */}
           {form.images.length < 12 && (
-            <div className="mt-2">
+            <div className="mt-2 space-y-2">
               <input ref={fileInputRef} type="file"
                 accept="image/*" multiple className="hidden"
                 onChange={handleFileUpload}
@@ -566,11 +596,28 @@ export default function NewListingPage() {
                 className="flex items-center gap-2 px-3 py-1.5 border border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-lg text-xs font-medium transition-colors"
               >
                 <Upload className="h-3.5 w-3.5" />
-                Bilder vom Computer hochladen
-                <span className="text-gray-400">({12 - form.images.length} verbleibend)</span>
+                Upload images from computer
+                <span className="text-gray-400">({12 - form.images.length} remaining)</span>
               </button>
+              <div className="flex flex-col sm:flex-row gap-1.5">
+                <input type="text" value={imageUrlInput}
+                  onChange={e => setImageUrlInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addImageUrls(); } }}
+                  placeholder="…or paste image addresses — several at once, separated by spaces"
+                  className="flex-1 min-w-0 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-200"
+                />
+                <button onClick={addImageUrls} disabled={!imageUrlInput.trim()}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap flex items-center gap-1.5"
+                >
+                  <Link2 className="h-3.5 w-3.5" />Add by URL
+                </button>
+              </div>
+              <p className="text-xs text-gray-400">
+                On sites that block reading (e.g. Amazon): open the product in your browser,
+                right-click each photo → <em>Copy image address</em>, then paste it above.
+              </p>
               {uploadError && (
-                <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
+                <p className="text-xs text-red-500 flex items-center gap-1">
                   <AlertCircle className="h-3 w-3" />{uploadError}
                 </p>
               )}
@@ -582,7 +629,7 @@ export default function NewListingPage() {
         <div>
           <div className="flex justify-between items-center mb-1.5">
             <label className="text-sm font-medium text-gray-700">
-              Titel <span className="text-red-400">*</span>
+              Title <span className="text-red-400">*</span>
             </label>
             <span className={`text-xs tabular-nums ${
               titleLen > 80 ? 'text-red-500 font-semibold' : titleLen > 70 ? 'text-yellow-500' : 'text-gray-400'
@@ -591,7 +638,7 @@ export default function NewListingPage() {
           <input type="text" value={form.title}
             onChange={e => set('title', e.target.value)}
             maxLength={80}
-            placeholder="z.B. Tierhaarentferner Rolle Hund Katze Wiederverwendbar Fusselroller"
+            placeholder="e.g. Tierhaarentferner Rolle Hund Katze Wiederverwendbar Fusselroller"
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
           />
         </div>
@@ -599,7 +646,7 @@ export default function NewListingPage() {
         {/* Condition + Category */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Zustand</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Condition</label>
             <select value={form.condition} onChange={e => set('condition', e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white"
             >
@@ -608,18 +655,18 @@ export default function NewListingPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Kategorie <span className="text-red-400">*</span>
+              Category <span className="text-red-400">*</span>
             </label>
             <div className="relative">
               <div className="flex gap-1.5">
                 <input type="text" value={form.category_suggestion}
                   onChange={e => { set('category_suggestion', e.target.value); set('category_id', ''); setShowCatDrop(false); }}
                   onKeyDown={e => e.key === 'Enter' && handleSearchCategories()}
-                  placeholder="z.B. Haustierbedarf > Hunde"
+                  placeholder="e.g. Haustierbedarf > Hunde"
                   className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
                 <button onClick={() => handleSearchCategories()} disabled={searchingCats}
-                  title="eBay-Kategorie suchen"
+                  title="Search eBay category"
                   className="px-2.5 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                 >
                   {searchingCats ? <Loader2 className="h-4 w-4 animate-spin text-gray-400" /> : <Search className="h-4 w-4 text-gray-400" />}
@@ -627,12 +674,12 @@ export default function NewListingPage() {
               </div>
               {!form.category_id && !searchingCats && (
                 <p className="mt-1 text-xs text-gray-400">
-                  Pflichtfeld — klicke auf 🔍 um automatisch zu suchen
+                  Required — click 🔍 to search automatically
                 </p>
               )}
               {form.category_id && (
                 <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3" /> eBay-ID: {form.category_id}
+                  <CheckCircle className="h-3 w-3" /> eBay ID: {form.category_id}
                 </p>
               )}
               {catSearchError && !showCatDrop && (
@@ -641,10 +688,10 @@ export default function NewListingPage() {
                     <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />{catSearchError}
                   </p>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-gray-500 shrink-0">Kategorie-ID manuell:</span>
+                    <span className="text-xs text-gray-500 shrink-0">Enter category ID manually:</span>
                     <input type="text" value={form.category_id}
                       onChange={e => set('category_id', e.target.value)}
-                      placeholder="z.B. 11450"
+                      placeholder="e.g. 11450"
                       className="w-28 px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
                     />
                   </div>
@@ -669,14 +716,14 @@ export default function NewListingPage() {
         {/* Description */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-sm font-medium text-gray-700">Beschreibung</label>
+            <label className="text-sm font-medium text-gray-700">Description</label>
             {(form.title || form.description) && (
               <button onClick={handleTranslate} disabled={translating}
                 className="flex items-center gap-1 text-xs px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-medium transition-colors disabled:opacity-50"
               >
                 {translating
-                  ? <><Loader2 className="h-3 w-3 animate-spin" />Übersetze…</>
-                  : <><Languages className="h-3 w-3" />Vorschau auf Englisch</>
+                  ? <><Loader2 className="h-3 w-3 animate-spin" />Translating…</>
+                  : <><Languages className="h-3 w-3" />Preview in English</>
                 }
               </button>
             )}
@@ -698,7 +745,7 @@ export default function NewListingPage() {
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
                   <Languages className="h-3.5 w-3.5" />
-                  Englische Vorschau (nur zur Ansicht — Inserat wird auf Deutsch veröffentlicht)
+                  English preview (view only — listing will be published in German)
                 </p>
                 <button onClick={() => setTranslation(null)} className="text-indigo-400 hover:text-indigo-600">
                   <X className="h-4 w-4" />
@@ -715,7 +762,7 @@ export default function NewListingPage() {
         {/* Price / Quantity / SKU */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Preis (EUR)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Price (EUR)</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm select-none">€</span>
               <input type="number" step="0.01" min="0" value={form.price}
@@ -726,7 +773,7 @@ export default function NewListingPage() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Menge</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Quantity</label>
             <input type="number" min="1" value={form.quantity}
               onChange={e => set('quantity', e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
@@ -734,7 +781,7 @@ export default function NewListingPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Artikelnr. <span className="font-normal text-gray-400">(optional)</span>
+              SKU <span className="font-normal text-gray-400">(optional)</span>
             </label>
             <input type="text" value={form.sku} onChange={e => set('sku', e.target.value)}
               placeholder="SKU-001"
@@ -745,11 +792,11 @@ export default function NewListingPage() {
 
         {/* Shipping */}
         <div className="border border-gray-200 rounded-xl p-4 space-y-4">
-          <p className="text-sm font-medium text-gray-700">Versand</p>
+          <p className="text-sm font-medium text-gray-700">Shipping</p>
 
           {/* Origin */}
           <div>
-            <p className="text-xs text-gray-500 mb-1.5">Herkunftsland</p>
+            <p className="text-xs text-gray-500 mb-1.5">Ships from</p>
             <div className="flex flex-wrap gap-2">
               {ORIGINS.map(o => (
                 <button key={o.id} onClick={() => handleOriginChange(o.id)}
@@ -766,7 +813,7 @@ export default function NewListingPage() {
           {/* Free/Paid + cost */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <p className="text-xs text-gray-500 mb-1.5">Versandkosten</p>
+              <p className="text-xs text-gray-500 mb-1.5">Shipping cost</p>
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox"
@@ -774,7 +821,7 @@ export default function NewListingPage() {
                     onChange={e => handleFreeToggle(e.target.checked)}
                     className="rounded accent-blue-600"
                   />
-                  <span className="text-sm text-gray-700">Kostenloser Versand</span>
+                  <span className="text-sm text-gray-700">Free shipping</span>
                 </label>
                 {form.shipping.type === 'paid' && (
                   <div className="relative">
@@ -789,7 +836,7 @@ export default function NewListingPage() {
               </div>
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1.5">Versandservice</p>
+              <p className="text-xs text-gray-500 mb-1.5">Shipping service</p>
               <input type="text"
                 value={form.shipping.service}
                 onChange={e => setShipping('service', e.target.value)}
@@ -801,7 +848,7 @@ export default function NewListingPage() {
           {/* Processing + Delivery days */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <p className="text-xs text-gray-500 mb-1.5">Bearbeitungszeit (Werktage)</p>
+              <p className="text-xs text-gray-500 mb-1.5">Processing time (business days)</p>
               <div className="flex items-center gap-2">
                 <input type="number" min="0"
                   value={form.shipping.processing_days_min}
@@ -814,11 +861,11 @@ export default function NewListingPage() {
                   onChange={e => setShipping('processing_days_max', Number(e.target.value))}
                   className="w-16 px-2 py-2 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
-                <span className="text-xs text-gray-400">Tage</span>
+                <span className="text-xs text-gray-400">days</span>
               </div>
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1.5">Lieferzeit (Tage)</p>
+              <p className="text-xs text-gray-500 mb-1.5">Delivery time (days)</p>
               <div className="flex items-center gap-2">
                 <input type="number" min="0"
                   value={form.shipping.delivery_days_min}
@@ -831,7 +878,7 @@ export default function NewListingPage() {
                   onChange={e => setShipping('delivery_days_max', Number(e.target.value))}
                   className="w-16 px-2 py-2 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
-                <span className="text-xs text-gray-400">Tage</span>
+                <span className="text-xs text-gray-400">days</span>
               </div>
             </div>
           </div>
@@ -839,7 +886,7 @@ export default function NewListingPage() {
 
         {/* Keywords */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">SEO-Schlüsselwörter</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">SEO Keywords</label>
           <div className="flex flex-wrap gap-1.5 mb-2">
             {form.keywords.map((kw, i) => (
               <span key={i}
@@ -854,7 +901,7 @@ export default function NewListingPage() {
               </span>
             ))}
           </div>
-          <input type="text" placeholder="Schlüsselwort eingeben und Enter drücken…"
+          <input type="text" placeholder="Type keyword and press Enter…"
             onKeyDown={e => {
               if (e.key === 'Enter' && e.currentTarget.value.trim()) {
                 set('keywords', [...form.keywords, e.currentTarget.value.trim()]);
@@ -868,20 +915,20 @@ export default function NewListingPage() {
         {/* Item Specifics */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Artikelmerkmale
-            <span className="ml-1.5 text-xs font-normal text-gray-400">(je nach Kategorie von eBay verlangt)</span>
+            Item Specifics
+            <span className="ml-1.5 text-xs font-normal text-gray-400">(required by eBay depending on category)</span>
           </label>
           <div className="space-y-2">
             {form.item_specifics.map((s, i) => (
               <div key={s._key} className="flex gap-2 items-center">
                 <input type="text" value={s.name}
                   onChange={e => updateSpecific(i, 'name', e.target.value)}
-                  placeholder="Merkmal (z.B. Farbe)"
+                  placeholder="Attribute (e.g. Farbe)"
                   className="w-28 sm:w-40 flex-shrink-0 min-w-0 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
                 <input type="text" value={s.value}
                   onChange={e => updateSpecific(i, 'value', e.target.value)}
-                  placeholder="Wert (z.B. Schwarz)"
+                  placeholder="Value (e.g. Schwarz)"
                   className="flex-1 min-w-0 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
                 <button onClick={() => removeSpecific(i)} className="p-1.5 flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors">
@@ -891,7 +938,7 @@ export default function NewListingPage() {
             ))}
             <button onClick={addSpecific}
               className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-            >+ Merkmal hinzufügen</button>
+            >+ Add attribute</button>
           </div>
         </div>
 
@@ -901,8 +948,8 @@ export default function NewListingPage() {
             <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
               <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-500" />
               <span>
-                <strong>Kategorie fehlt</strong> — ohne Kategorie kann nicht veröffentlicht werden.
-                {' '}Klicke das 🔍 Lupensymbol neben dem Kategorie-Feld, um automatisch die passende eBay-Kategorie zu suchen.
+                <strong>Category missing</strong> — listing cannot be published without a category.
+                {' '}Click the 🔍 icon next to the Category field to search for the right eBay category.
               </span>
             </div>
           )}
@@ -920,8 +967,8 @@ export default function NewListingPage() {
                     className="inline-flex items-center gap-1.5 text-xs font-medium bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-md transition-colors w-fit"
                   >
                     {solvingAI
-                      ? <><Loader2 className="h-3 w-3 animate-spin" /> KI löst…</>
-                      : <><Sparkles className="h-3 w-3" /> Mit KI lösen</>}
+                      ? <><Loader2 className="h-3 w-3 animate-spin" /> Solving…</>
+                      : <><Sparkles className="h-3 w-3" /> Fix with AI</>}
                   </button>
                   {aiSolveError && (
                     <p className="text-xs text-red-500 flex items-center gap-1">
@@ -935,20 +982,20 @@ export default function NewListingPage() {
           {publishedListing && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-2">
               <p className="text-green-700 font-semibold text-sm flex items-center gap-2">
-                <CheckCircle className="h-4 w-4" /> Inserat wurde erfolgreich auf eBay veröffentlicht!
+                <CheckCircle className="h-4 w-4" /> Listing published successfully on eBay!
               </p>
               <div className="flex items-center gap-3 flex-wrap">
                 {(publishedListing as { listing_url?: string }).listing_url && (
                   <a href={(publishedListing as { listing_url?: string }).listing_url} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
                   >
-                    <ExternalLink className="h-3.5 w-3.5" /> Auf eBay ansehen
+                    <ExternalLink className="h-3.5 w-3.5" /> View on eBay
                   </a>
                 )}
                 <button onClick={handleReset}
                   className="inline-flex items-center gap-1.5 text-sm font-medium bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition-colors"
                 >
-                  + Neues Inserat erstellen
+                  + Create new listing
                 </button>
               </div>
             </div>
@@ -961,7 +1008,7 @@ export default function NewListingPage() {
                 disabled:text-gray-300 disabled:cursor-not-allowed
                 enabled:text-gray-700 enabled:hover:bg-gray-50 enabled:cursor-pointer"
             >
-              {saving ? <><Loader2 className="h-4 w-4 animate-spin" />Speichere…</> : 'Entwurf speichern'}
+              {saving ? <><Loader2 className="h-4 w-4 animate-spin" />Saving…</> : 'Save Draft'}
             </button>
             <button
               disabled={!canPublish || publishing || !!publishedListing}
@@ -970,11 +1017,11 @@ export default function NewListingPage() {
                 disabled:bg-blue-300 disabled:cursor-not-allowed
                 enabled:bg-blue-600 enabled:hover:bg-blue-700 enabled:cursor-pointer"
             >
-              {publishing ? <><Loader2 className="h-4 w-4 animate-spin" />Wird veröffentlicht…</> : 'Auf eBay veröffentlichen'}
+              {publishing ? <><Loader2 className="h-4 w-4 animate-spin" />Publishing…</> : 'Publish to eBay'}
             </button>
             {!canPublish && !publishedListing && (
               <span className="text-xs text-gray-400">
-                {!canSave ? 'Titel erforderlich' : !form.price.trim() ? 'Preis erforderlich' : ''}
+                {!canSave ? 'Title required' : !form.price.trim() ? 'Price required' : ''}
               </span>
             )}
           </div>

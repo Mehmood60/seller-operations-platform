@@ -150,21 +150,21 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, Props>(
 
         {/* ── Toolbar ──────────────────────────────────────────────────── */}
         <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-gray-200 flex-wrap">
-          <Btn onMouseDown={b('bold')}      title="Fett (Strg+B)">      <strong>B</strong>                        </Btn>
-          <Btn onMouseDown={b('italic')}    title="Kursiv (Strg+I)">    <em className="italic font-medium">I</em> </Btn>
-          <Btn onMouseDown={b('underline')} title="Unterstrichen">      <span className="underline">U</span>      </Btn>
+          <Btn onMouseDown={b('bold')}      title="Bold (Ctrl+B)">      <strong>B</strong>                        </Btn>
+          <Btn onMouseDown={b('italic')}    title="Italic (Ctrl+I)">    <em className="italic font-medium">I</em> </Btn>
+          <Btn onMouseDown={b('underline')} title="Underline">          <span className="underline">U</span>      </Btn>
           <Sep />
-          <Btn onMouseDown={b('formatBlock', 'h2')} title="Überschrift">    <span className="font-bold">H2</span></Btn>
-          <Btn onMouseDown={b('formatBlock', 'h3')} title="Unterüberschrift"><span className="font-bold">H3</span></Btn>
-          <Btn onMouseDown={b('formatBlock', 'p')}  title="Absatz">         <span>¶</span>                       </Btn>
+          <Btn onMouseDown={b('formatBlock', 'h2')} title="Heading">    <span className="font-bold">H2</span></Btn>
+          <Btn onMouseDown={b('formatBlock', 'h3')} title="Subheading"><span className="font-bold">H3</span></Btn>
+          <Btn onMouseDown={b('formatBlock', 'p')}  title="Paragraph">  <span>¶</span>                       </Btn>
           <Sep />
-          <Btn onMouseDown={b('insertUnorderedList')} title="Aufzählungsliste">• Liste</Btn>
-          <Btn onMouseDown={b('insertOrderedList')}   title="Nummerierte Liste">1. Liste</Btn>
+          <Btn onMouseDown={b('insertUnorderedList')} title="Bulleted list">• List</Btn>
+          <Btn onMouseDown={b('insertOrderedList')}   title="Numbered list">1. List</Btn>
           <Sep />
-          <Btn onMouseDown={b('undo')} title="Rückgängig (Strg+Z)">↩</Btn>
-          <Btn onMouseDown={b('redo')} title="Wiederholen (Strg+Y)">↪</Btn>
+          <Btn onMouseDown={b('undo')} title="Undo (Ctrl+Z)">↩</Btn>
+          <Btn onMouseDown={b('redo')} title="Redo (Ctrl+Y)">↪</Btn>
           <Sep />
-          <Btn onMouseDown={b('removeFormat')} title="Formatierung entfernen">
+          <Btn onMouseDown={b('removeFormat')} title="Clear formatting">
             <span className="line-through text-gray-400">A</span>
           </Btn>
 
@@ -172,7 +172,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, Props>(
             <button
               type="button"
               onClick={toggleSource}
-              title={showSource ? 'Visuell bearbeiten' : 'HTML-Quelltext anzeigen'}
+              title={showSource ? 'Visual editing' : 'Show HTML source'}
               className={`px-2 py-1 rounded text-xs font-mono transition-colors ${
                 showSource
                   ? 'bg-blue-100 text-blue-700'

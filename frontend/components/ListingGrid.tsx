@@ -64,15 +64,15 @@ export function ListingGrid({ listings }: ListingGridProps) {
                 {formatMoney(listing.price)}
               </span>
               <Badge variant={STATUS_VARIANT[listing.status] ?? 'default'}>
-                {listing.status === 'DRAFT' ? 'Entwurf'
-                  : listing.status === 'ACTIVE' ? 'Aktiv'
-                  : listing.status === 'ENDED' ? 'Beendet'
-                  : listing.status === 'OUT_OF_STOCK' ? 'Ausverkauft'
+                {listing.status === 'DRAFT' ? 'Draft'
+                  : listing.status === 'ACTIVE' ? 'Active'
+                  : listing.status === 'ENDED' ? 'Ended'
+                  : listing.status === 'OUT_OF_STOCK' ? 'Out of stock'
                   : listing.status}
               </Badge>
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              {listing.quantity.available} verfügbar · {listing.quantity.sold} verk.
+              {listing.quantity.available} available · {listing.quantity.sold} sold
             </p>
           </div>
         </Link>

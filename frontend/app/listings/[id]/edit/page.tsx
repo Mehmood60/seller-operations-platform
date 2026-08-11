@@ -64,9 +64,9 @@ const CONDITIONS = [
 ];
 
 const ORIGINS: { id: ShippingOrigin; label: string }[] = [
-  { id: 'DE', label: '🇩🇪 Deutschland' },
+  { id: 'DE', label: '🇩🇪 Germany' },
   { id: 'CN', label: '🇨🇳 China' },
-  { id: 'UNKNOWN', label: '🌍 Sonstige' },
+  { id: 'UNKNOWN', label: '🌍 Other' },
 ];
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -130,6 +130,7 @@ export default function EditListingPage() {
 
   // image upload
   const [uploadError, setUploadError]   = useState<string | null>(null);
+  const [imageUrlInput, setImageUrlInput] = useState('');
   const fileInputRef                    = useRef<HTMLInputElement>(null);
 
 
@@ -173,7 +174,7 @@ export default function EditListingPage() {
       .then(() => {
         listingsApi.health(id).then(r => setHealth(r.data)).catch(() => {});
       })
-      .catch(err => setLoadError(err instanceof Error ? err.message : 'Entwurf nicht gefunden.'))
+      .catch(err => setLoadError(err instanceof Error ? err.message : 'Draft not found.'))
       .finally(() => setLoadingDraft(false));
   }, [id]);
 
@@ -211,7 +212,7 @@ export default function EditListingPage() {
 
     if (missing.length === 0) {
       console.warn('[AI Solve] Could not extract missing fields. publishError:', publishError);
-      setAiSolveError('Fehlende Felder konnten nicht erkannt werden. Bitte Felder manuell ausfüllen.');
+      setAiSolveError('Could not detect the missing fields. Please fill them in manually.');
       return;
     }
     console.log('[AI Solve] Sending missing fields to AI:', missing);
@@ -238,7 +239,7 @@ export default function EditListingPage() {
         return { ...f, item_specifics: [...updated, ...toAdd] };
       });
     } catch (err: unknown) {
-      setAiSolveError(err instanceof Error ? err.message : 'KI konnte die fehlenden Felder nicht ausfüllen.');
+      setAiSolveError(err instanceof Error ? err.message : 'AI could not fill the missing fields.');
     } finally {
       setSolvingAI(false);
     }
@@ -281,7 +282,7 @@ export default function EditListingPage() {
       const catQuery = (s.category_suggestion || s.title || '').trim();
       if (catQuery) void handleSearchCategories(catQuery);
     } catch (err: unknown) {
-      setAnalyzeError(err instanceof Error ? err.message : 'Analyse fehlgeschlagen.');
+      setAnalyzeError(err instanceof Error ? err.message : 'Analysis failed.');
     } finally {
       setAnalyzing(false);
     }
@@ -435,7 +436,7 @@ export default function EditListingPage() {
       const res = await aiApi.translate(form.title, form.description);
       setTranslation(res.data);
     } catch (err: unknown) {
-      setTranslateError(err instanceof Error ? err.message : 'Übersetzung fehlgeschlagen.');
+      setTranslateError(err instanceof Error ? err.message : 'Translation failed.');
     } finally {
       setTranslating(false);
     }
@@ -472,12 +473,12 @@ export default function EditListingPage() {
     const readers: Promise<string>[] = toRead.map(
       file => new Promise((resolve, reject) => {
         if (!file.type.startsWith('image/')) {
-          reject(new Error(`"${file.name}" ist kein Bild.`));
+          reject(new Error(`"${file.name}" is not an image.`));
           return;
         }
         const reader = new FileReader();
         reader.onload  = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error(`Fehler beim Lesen von "${file.name}".`));
+        reader.onerror = () => reject(new Error(`Could not read "${file.name}".`));
         reader.readAsDataURL(file);
       })
     );
@@ -486,7 +487,7 @@ export default function EditListingPage() {
       const dataUrls: string[] = [];
       for (const r of results) {
         if (r.status === 'fulfilled') dataUrls.push(r.value);
-        else setUploadError(r.reason?.message ?? 'Upload-Fehler');
+        else setUploadError(r.reason?.message ?? 'Upload failed');
       }
       if (dataUrls.length) set('images', [...form.images, ...dataUrls]);
     });
@@ -496,6 +497,34 @@ export default function EditListingPage() {
 
   const removeImage = (i: number) =>
     set('images', form.images.filter((_, j) => j !== i));
+
+  // ── Add images by URL ─────────────────────────────────────────────────────
+  // Escape hatch for sites the scraper cannot read (Amazon blocks it): the seller
+  // copies image addresses from their own browser and pastes them here.
+
+  const addImageUrls = () => {
+    setUploadError(null);
+    const pasted = imageUrlInput.split(/[\s,]+/).map(u => u.trim()).filter(Boolean);
+    if (pasted.length === 0) return;
+
+    const valid = pasted.filter(u => /^https?:\/\/\S+$/i.test(u));
+    if (valid.length === 0) {
+      setUploadError('Paste an image address starting with http:// or https://');
+      return;
+    }
+
+    const fresh = valid.filter(u => !form.images.includes(u)).slice(0, 12 - form.images.length);
+    if (fresh.length === 0) {
+      setUploadError('Already added — or the 12-image limit is reached.');
+      return;
+    }
+    if (fresh.length < valid.length) {
+      setUploadError(`Added ${fresh.length} of ${valid.length} — duplicates and anything past 12 images were skipped.`);
+    }
+
+    set('images', [...form.images, ...fresh]);
+    setImageUrlInput('');
+  };
 
   // ── Item specifics ────────────────────────────────────────────────────────
 
@@ -544,7 +573,7 @@ export default function EditListingPage() {
       });
       router.push('/listings');
     } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : 'Entwurf konnte nicht gespeichert werden.');
+      setSaveError(err instanceof Error ? err.message : 'Draft could not be saved.');
     } finally {
       setSaving(false);
     }
@@ -559,7 +588,7 @@ export default function EditListingPage() {
       await listingsApi.deleteDraft(id);
       router.push('/listings');
     } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : 'Entwurf konnte nicht gelöscht werden.');
+      setSaveError(err instanceof Error ? err.message : 'Draft could not be deleted.');
       setDeleting(false);
     }
   };
@@ -599,7 +628,7 @@ export default function EditListingPage() {
       });
       setRevisedSuccess(true);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Aktualisierung fehlgeschlagen.';
+      const msg = err instanceof Error ? err.message : 'Update failed.';
       setReviseError(msg);
       const missing = [...msg.matchAll(/The item specific (.+?) is missing/g)].map(m => m[1]);
       if (missing.length > 0) {
@@ -630,10 +659,10 @@ export default function EditListingPage() {
         setCatSuggestions(suggestions);
         setShowCatDrop(true);
       } else {
-        setCatSearchError((res.meta as Record<string, string>)?.suggest_error ?? 'Keine Vorschläge gefunden. Kategorie-ID manuell eingeben.');
+        setCatSearchError((res.meta as Record<string, string>)?.suggest_error ?? 'No suggestions found. Enter the category ID manually.');
       }
     } catch (err: unknown) {
-      setCatSearchError(err instanceof Error ? err.message : 'Kategoriesuche fehlgeschlagen.');
+      setCatSearchError(err instanceof Error ? err.message : 'Category search failed.');
     } finally {
       setSearchingCats(false);
     }
@@ -670,7 +699,7 @@ export default function EditListingPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setPublishedListing(published.data as any);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Veröffentlichung fehlgeschlagen.';
+      const msg = err instanceof Error ? err.message : 'Publishing failed.';
       setPublishError(msg);
       const missing = extractMissing(msg);
       if (missing.length > 0) {
@@ -705,7 +734,7 @@ export default function EditListingPage() {
     return (
       <div className="space-y-4">
         <Link href="/listings" className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-gray-600">
-          <ArrowLeft className="h-4 w-4" /> Zurück zu Inseraten
+          <ArrowLeft className="h-4 w-4" /> Back to listings
         </Link>
         <p className="text-red-500">{loadError}</p>
       </div>
@@ -785,16 +814,16 @@ export default function EditListingPage() {
             {savingUrl
               ? <Loader2 className="h-4 w-4 animate-spin" />
               : urlSaved
-                ? <><CheckCircle className="h-4 w-4 text-green-600" /><span className="text-green-700">Gespeichert</span></>
-                : <><Link2 className="h-4 w-4" />URL speichern</>
+                ? <><CheckCircle className="h-4 w-4 text-green-600" /><span className="text-green-700">Saved</span></>
+                : <><Link2 className="h-4 w-4" />Save URL</>
             }
           </button>
           <button onClick={handleAnalyze} disabled={!url.trim() || analyzing}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors whitespace-nowrap"
           >
             {analyzing
-              ? <><Loader2 className="h-4 w-4 animate-spin" />Analysiert…</>
-              : <><Sparkles className="h-4 w-4" />Mit KI analysieren</>
+              ? <><Loader2 className="h-4 w-4 animate-spin" />Analyzing…</>
+              : <><Sparkles className="h-4 w-4" />Analyze with AI</>
             }
           </button>
         </div>
@@ -810,7 +839,7 @@ export default function EditListingPage() {
         )}
         {analyzed && !analyzeError && !analyzeWarning && (
           <p className="mt-3 text-sm text-green-700 font-medium">
-            ✓ Erneute Analyse abgeschlossen — Felder wurden aktualisiert.
+            ✓ Re-analysis complete — fields were updated.
           </p>
         )}
       </div>
@@ -1004,7 +1033,7 @@ export default function EditListingPage() {
             )}
           </div>
           {form.images.length < 12 && (
-            <div className="mt-2">
+            <div className="mt-2 space-y-2">
               <input ref={fileInputRef} type="file"
                 accept="image/*" multiple className="hidden"
                 onChange={handleFileUpload}
@@ -1017,8 +1046,25 @@ export default function EditListingPage() {
                 Upload images from computer
                 <span className="text-gray-400">({12 - form.images.length} remaining)</span>
               </button>
+              <div className="flex flex-col sm:flex-row gap-1.5">
+                <input type="text" value={imageUrlInput}
+                  onChange={e => setImageUrlInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addImageUrls(); } }}
+                  placeholder="…or paste image addresses — several at once, separated by spaces"
+                  className="flex-1 min-w-0 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-200"
+                />
+                <button onClick={addImageUrls} disabled={!imageUrlInput.trim()}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap flex items-center gap-1.5"
+                >
+                  <Link2 className="h-3.5 w-3.5" />Add by URL
+                </button>
+              </div>
+              <p className="text-xs text-gray-400">
+                On sites that block reading (e.g. Amazon): open the product in your browser,
+                right-click each photo → <em>Copy image address</em>, then paste it above.
+              </p>
               {uploadError && (
-                <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
+                <p className="text-xs text-red-500 flex items-center gap-1">
                   <AlertCircle className="h-3 w-3" />{uploadError}
                 </p>
               )}
@@ -1039,7 +1085,7 @@ export default function EditListingPage() {
           <input type="text" value={form.title}
             onChange={e => set('title', e.target.value)}
             maxLength={80}
-            placeholder="z.B. Tierhaarentferner Rolle Hund Katze Wiederverwendbar Fusselroller"
+            placeholder="e.g. Tierhaarentferner Rolle Hund Katze Wiederverwendbar Fusselroller"
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
           />
         </div>
@@ -1067,7 +1113,7 @@ export default function EditListingPage() {
                   className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
                 <button onClick={() => handleSearchCategories()} disabled={searchingCats}
-                  title="eBay-Kategorie suchen"
+                  title="Search eBay category"
                   className="px-2.5 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                 >
                   {searchingCats ? <Loader2 className="h-4 w-4 animate-spin text-gray-400" /> : <Search className="h-4 w-4 text-gray-400" />}
@@ -1092,7 +1138,7 @@ export default function EditListingPage() {
                     <span className="text-xs text-gray-500 shrink-0">Enter category ID manually:</span>
                     <input type="text" value={form.category_id}
                       onChange={e => set('category_id', e.target.value)}
-                      placeholder="z.B. 11450"
+                      placeholder="e.g. 11450"
                       className="w-28 px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
                     />
                   </div>
@@ -1259,7 +1305,7 @@ export default function EditListingPage() {
                   onChange={e => setShipping('processing_days_max', Number(e.target.value))}
                   className="w-16 px-2 py-2 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
-                <span className="text-xs text-gray-400">Tage</span>
+                <span className="text-xs text-gray-400">days</span>
               </div>
             </div>
             <div>

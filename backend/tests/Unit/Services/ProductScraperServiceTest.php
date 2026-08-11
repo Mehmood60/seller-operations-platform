@@ -99,7 +99,7 @@ class ProductScraperServiceTest extends TestCase
         $warning = $this->call('detectBlockedPage', $html, 'https://www.amazon.de/dp/B08L5NP6NG');
 
         $this->assertNotNull($warning);
-        $this->assertStringContainsString('Amazon blockiert', $warning);
+        $this->assertStringContainsString('Amazon blocks', $warning);
     }
 
     public function testDetectsEmptyShellAsBlocked(): void

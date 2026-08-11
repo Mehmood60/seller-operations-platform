@@ -94,9 +94,9 @@ class ProductScraperService
         // Price monitoring for CJ products requires the CJDropshipping API instead.
         if (str_contains($host, 'cjdropshipping.com')) {
             throw new \RuntimeException(
-                'CJDropshipping blockiert automatische Preisabfragen (Bot-Schutz). ' .
-                'Verbinde dein CJ-Konto unter Einstellungen → CJ API, ' .
-                'um Preisüberwachung für CJ-Produkte zu aktivieren.'
+                'CJDropshipping blocks automated price lookups (bot protection). ' .
+                'Connect your CJ account under Settings → CJ API to enable ' .
+                'price monitoring for CJ products.'
             );
         }
     }
@@ -106,7 +106,7 @@ class ProductScraperService
      * product data. Without this the AI silently invents a whole listing from the
      * words in the URL — plausible looking, completely wrong.
      *
-     * @return string|null German warning for the seller, or null if the page is usable
+     * @return string|null Warning to show the seller, or null if the page is usable
      */
     private function detectBlockedPage(string $html, string $url): ?string
     {
@@ -150,15 +150,15 @@ class ProductScraperService
         $host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
 
         if (str_contains($host, 'amazon.')) {
-            return 'Amazon blockiert das automatische Auslesen von Produktseiten. '
-                . 'Es konnten nur das Hauptbild und die Wörter aus der URL verwendet werden — '
-                . 'Titel, Preis, Kategorie und Artikelmerkmale sind reine KI-Schätzungen. '
-                . 'Bitte alle Felder prüfen und die restlichen Bilder selbst hochladen.';
+            return 'Amazon blocks automated reading of product pages. Only the main image '
+                . 'and the words in the URL could be used — title, price, category and item '
+                . 'specifics are pure AI guesses. Please check every field and upload the '
+                . 'remaining images yourself.';
         }
 
-        return 'Die Produktseite hat keine Produktdaten geliefert (Bot-Schutz oder reine '
-            . 'JavaScript-Seite). Die Felder sind reine KI-Schätzungen aus der URL — '
-            . 'bitte alles prüfen und Bilder selbst hochladen.';
+        return 'The product page returned no product data (bot protection or a '
+            . 'JavaScript-only page). The fields are pure AI guesses based on the URL — '
+            . 'please check everything and upload the images yourself.';
     }
 
     private function fetchUrl(string $url): string

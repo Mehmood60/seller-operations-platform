@@ -43,7 +43,7 @@ class PriceMonitorService
         $scraped = $this->scraper->scrape($sourceUrl);
         if (!empty($scraped['blocked'])) {
             // A bot wall carries no price — recording it would look like "price 0.00".
-            throw new \RuntimeException($scraped['warning'] ?: 'Die Quellseite hat keine Preisdaten geliefert.');
+            throw new \RuntimeException($scraped['warning'] ?: 'The source page returned no price data.');
         }
 
         $now        = date('c');
