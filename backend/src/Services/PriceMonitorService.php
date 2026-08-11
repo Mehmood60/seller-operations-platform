@@ -40,7 +40,12 @@ class PriceMonitorService
             throw new \RuntimeException('Listing has no source URL to monitor.');
         }
 
-        $scraped    = $this->scraper->scrape($sourceUrl);
+        $scraped = $this->scraper->scrape($sourceUrl);
+        if (!empty($scraped['blocked'])) {
+            // A bot wall carries no price — recording it would look like "price 0.00".
+            throw new \RuntimeException($scraped['warning'] ?: 'Die Quellseite hat keine Preisdaten geliefert.');
+        }
+
         $now        = date('c');
         $newSrcPrice = (float)($scraped['price']['value'] ?? 0);
         $ebayPrice   = (float)($listing['price']['value'] ?? 0);

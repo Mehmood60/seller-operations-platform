@@ -258,11 +258,16 @@ export interface ScrapedProduct {
   price: Money;
   origin: ShippingOrigin;
   text_snippet: string;
+  /** true when the source page answered with a bot wall instead of product data */
+  blocked?: boolean;
+  warning?: string;
 }
 
 export interface AiAnalysisResult {
   raw_product: ScrapedProduct;
   ai_suggestion: AiSuggestion;
+  /** set when the page could not be read and the fields are AI guesses */
+  warning?: string;
 }
 
 // ─── Competitor Check ────────────────────────────────────────────────────────

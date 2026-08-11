@@ -79,6 +79,7 @@ export default function NewListingPage() {
   const [url, setUrl]                   = useState('');
   const [analyzing, setAnalyzing]       = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [analyzeWarning, setAnalyzeWarning] = useState<string | null>(null);
   const [analyzed, setAnalyzed]         = useState(false);
   const [form, setForm]                 = useState<FormData>(EMPTY);
   const richEditorRef = useRef<RichTextEditorHandle>(null);
@@ -182,6 +183,7 @@ export default function NewListingPage() {
     setUrl('');
     setAnalyzing(false);
     setAnalyzeError(null);
+    setAnalyzeWarning(null);
     setAnalyzed(false);
     setForm(EMPTY);
     richEditorRef.current?.clear();
@@ -206,6 +208,7 @@ export default function NewListingPage() {
     if (!url.trim() || analyzing) return;
     setAnalyzing(true);
     setAnalyzeError(null);
+    setAnalyzeWarning(null);
     setAnalyzed(false);
     setTranslation(null);
     try {
@@ -232,6 +235,7 @@ export default function NewListingPage() {
         images:              raw.images ?? [],
       });
       richEditorRef.current?.setValue(s.description ?? '');
+      setAnalyzeWarning(res.data.warning || raw.warning || null);
       setAnalyzed(true);
       // Auto-search eBay category using the AI suggestion
       const catQuery = (s.category_suggestion || s.title || '').trim();
@@ -483,6 +487,7 @@ export default function NewListingPage() {
           <p className="text-xs text-gray-500 mb-3">
             Link von AliExpress, DHgate oder einer anderen Dropshipping-Seite einfügen.
             Die KI liest das Produkt und füllt das Formular automatisch auf Deutsch aus.
+            Hinweis: Amazon blockiert das Auslesen — dort wird nur das Hauptbild geladen.
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <input type="url" value={url}
@@ -505,7 +510,12 @@ export default function NewListingPage() {
               <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />{analyzeError}
             </div>
           )}
-          {analyzed && !analyzeError && (
+          {analyzeWarning && (
+            <div className="mt-3 flex items-start gap-2 text-amber-800 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-500" />{analyzeWarning}
+            </div>
+          )}
+          {analyzed && !analyzeError && !analyzeWarning && (
             <p className="mt-3 text-sm text-green-700 font-medium">
               ✓ KI-Analyse abgeschlossen — Formular wurde auf Deutsch ausgefüllt. Bitte prüfen und anpassen.
             </p>

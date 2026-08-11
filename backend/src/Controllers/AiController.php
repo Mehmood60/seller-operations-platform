@@ -31,12 +31,25 @@ class AiController
         }
 
         try {
-            $scraped    = $this->scraper->scrape($url);
+            $scraped = $this->scraper->scrape($url);
+
+            // Blocked page and not even an image to go by — everything the AI would
+            // return is invented. Fail loudly instead of handing over a fake listing.
+            if (!empty($scraped['blocked']) && empty($scraped['images'])) {
+                Response::error(
+                    ($scraped['warning'] ?: 'Die Produktseite konnte nicht ausgelesen werden.')
+                    . ' Bitte "Manuelle Eingabe" verwenden.',
+                    422
+                );
+                return;
+            }
+
             $suggestion = $this->aiService->analyze($scraped);
 
             Response::json([
                 'raw_product'   => $scraped,
                 'ai_suggestion' => $suggestion,
+                'warning'       => $scraped['warning'] ?? '',
             ]);
         } catch (\InvalidArgumentException $e) {
             Response::error($e->getMessage(), 422);

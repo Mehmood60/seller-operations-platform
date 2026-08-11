@@ -9,6 +9,8 @@ use GuzzleHttp\Exception\GuzzleException;
 
 class ProductScraperService
 {
+    private const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
     private Client $http;
 
     public function __construct()
@@ -34,6 +36,17 @@ class ProductScraperService
         $price     = $this->extractPrice($html, $jsonLd, $openGraph);
         $origin    = $this->detectOriginCountry($html, $url);
         $snippet   = $this->extractTextSnippet($html);
+        $blockNote = $this->detectBlockedPage($html, $url);
+
+        // Bot walls serve a stub page with no product photos. Amazon still hands out
+        // the main product image over its public ASIN image endpoint, so use that
+        // rather than leaving the listing without a single picture.
+        if (empty($images)) {
+            $fallback = $this->amazonAsinImage($url);
+            if ($fallback !== null) {
+                $images[] = $fallback;
+            }
+        }
 
         $title = $jsonLd['name']
             ?? $openGraph['og:title']
@@ -44,6 +57,14 @@ class ProductScraperService
             ?? $openGraph['og:description']
             ?? '';
 
+        // A bot wall's <title> ("Amazon.de") and body text (captcha boilerplate) are
+        // worse than nothing — they only mislead the AI. Leave the URL as its input.
+        if ($blockNote !== null) {
+            $title       = '';
+            $description = '';
+            $snippet     = '';
+        }
+
         return [
             'url'          => $url,
             'title'        => html_entity_decode(strip_tags($title), ENT_QUOTES),
@@ -52,6 +73,8 @@ class ProductScraperService
             'price'        => $price,
             'origin'       => $origin,
             'text_snippet' => $snippet,
+            'blocked'      => $blockNote !== null,
+            'warning'      => $blockNote ?? '',
         ];
     }
 
@@ -78,12 +101,72 @@ class ProductScraperService
         }
     }
 
+    /**
+     * Detect pages that answered with a bot wall or an empty JS shell instead of
+     * product data. Without this the AI silently invents a whole listing from the
+     * words in the URL — plausible looking, completely wrong.
+     *
+     * @return string|null German warning for the seller, or null if the page is usable
+     */
+    private function detectBlockedPage(string $html, string $url): ?string
+    {
+        $lower = strtolower($html);
+
+        $blockSignals = [
+            'to discuss automated access to amazon data', // Amazon bot wall
+            'api-services-support@amazon.com',
+            '/errors/validatecaptcha',
+            'enter the characters you see below',
+            'geben sie die zeichen unten ein',
+            'type the characters you see in this image',
+            'cf-browser-verification',                    // Cloudflare
+            'attention required! | cloudflare',
+            'checking if the site connection is secure',
+            'please verify you are a human',
+            'px-captcha',                                 // PerimeterX
+            'unusual traffic from your',
+        ];
+        foreach ($blockSignals as $signal) {
+            if (str_contains($lower, $signal)) {
+                return $this->blockedPageMessage($url);
+            }
+        }
+
+        // No captcha marker, but nothing a product page would ever be missing:
+        // real product pages are 100 KB+ and always carry OG tags, JSON-LD or
+        // microdata. A tiny page without any of them is a soft block.
+        $hasProductMarkup = str_contains($lower, 'og:title')
+            || str_contains($lower, 'application/ld+json')
+            || str_contains($lower, 'itemprop="name"');
+        if (strlen($html) < 15000 && !$hasProductMarkup) {
+            return $this->blockedPageMessage($url);
+        }
+
+        return null;
+    }
+
+    private function blockedPageMessage(string $url): string
+    {
+        $host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
+
+        if (str_contains($host, 'amazon.')) {
+            return 'Amazon blockiert das automatische Auslesen von Produktseiten. '
+                . 'Es konnten nur das Hauptbild und die Wörter aus der URL verwendet werden — '
+                . 'Titel, Preis, Kategorie und Artikelmerkmale sind reine KI-Schätzungen. '
+                . 'Bitte alle Felder prüfen und die restlichen Bilder selbst hochladen.';
+        }
+
+        return 'Die Produktseite hat keine Produktdaten geliefert (Bot-Schutz oder reine '
+            . 'JavaScript-Seite). Die Felder sind reine KI-Schätzungen aus der URL — '
+            . 'bitte alles prüfen und Bilder selbst hochladen.';
+    }
+
     private function fetchUrl(string $url): string
     {
         try {
             $response = $this->http->get($url, [
                 'headers' => [
-                    'User-Agent'               => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                    'User-Agent'               => self::USER_AGENT,
                     'Accept'                   => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
                     'Accept-Language'          => 'en-US,en;q=0.9,de;q=0.8',
                     'Accept-Encoding'          => 'gzip, deflate',
@@ -177,6 +260,12 @@ class ProductScraperService
                 $seen[$abs] = true;
             }
         };
+
+        // 0. Amazon gallery — its photos are only in JS blobs and dynamic-image
+        //    attributes, never in a plain img src or og:image.
+        foreach ($this->extractAmazonImages($html) as $u) {
+            $add($u);
+        }
 
         // 1. AliExpress / DHgate JS image list — highest priority, finds ALL gallery images
         foreach ($this->extractJsImageList($html) as $u) {
@@ -280,9 +369,98 @@ class ProductScraperService
         return array_values(array_unique($images));
     }
 
+    /**
+     * Extract the Amazon product gallery. Amazon keeps its photos in JS blobs and
+     * dynamic-image attributes only — never in og:image or a plain img src — which
+     * is why the generic extractors find nothing on an Amazon page.
+     *
+     * @return string[]
+     */
+    private function extractAmazonImages(string $html): array
+    {
+        // Product photos live under /images/I/ on the image CDN; UI chrome sits
+        // under /images/G/. Renditions of one photo share a hash and differ only in
+        // the two leading size characters (71xVXcJEt8L / 41xVXcJEt8L), so collapse
+        // by hash and re-request a large size.
+        $urlPattern = '#https?://[a-z0-9\-.]*(?:media-amazon|ssl-images-amazon)\.com/images/I/'
+            . '([A-Za-z0-9%+\-]{5,})(?:\.[A-Za-z0-9_,\-]+)*\.(?:jpg|jpeg|png|webp)#i';
+
+        $byHash  = [];
+        $collect = function (string $blob) use (&$byHash, $urlPattern): void {
+            preg_match_all($urlPattern, str_replace('\/', '/', $blob), $m);
+            foreach ($m[1] as $id) {
+                $hash = mb_strlen($id) > 4 ? mb_substr($id, 2) : $id;
+                $byHash[$hash] ??= 'https://m.media-amazon.com/images/I/' . $id . '._SL1600_.jpg';
+            }
+        };
+
+        // Full-size renditions first, so the seller gets the sharpest copy of each
+        // photo and the gallery keeps Amazon's own order.
+        foreach (['hiRes', 'mainUrl', 'large', 'thumb'] as $key) {
+            preg_match_all('/"' . $key . '"\s*:\s*"([^"]+)"/i', $html, $m);
+            foreach ($m[1] as $u) {
+                $collect($u);
+            }
+        }
+        preg_match_all('/data-old-hires=["\']([^"\']+)["\']/i', $html, $m);
+        foreach ($m[1] as $u) {
+            $collect($u);
+        }
+        preg_match_all('/data-a-dynamic-image=(?:"([^"]*)"|\'([^\']*)\')/i', $html, $m, PREG_SET_ORDER);
+        foreach ($m as $match) {
+            $collect($match[1] !== '' ? $match[1] : ($match[2] ?? ''));
+        }
+
+        // Only if the gallery markup gave nothing: sweep the whole page. Done first
+        // this would pull in "customers also bought" thumbnails of other products.
+        if (empty($byHash)) {
+            $collect($html);
+        }
+
+        return array_values($byHash);
+    }
+
+    /**
+     * Amazon's public ASIN image endpoint — the only product image reachable when
+     * the product page itself is behind the bot wall. It answers 200 with a 43-byte
+     * 1x1 GIF when the ASIN has no image, so verify before using it.
+     */
+    private function amazonAsinImage(string $url): ?string
+    {
+        $host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
+        if (!str_contains($host, 'amazon.')) {
+            return null;
+        }
+        if (!preg_match('#/(?:dp|gp/product|gp/aw/d|ASIN)/([A-Z0-9]{10})#i', $url, $m)) {
+            return null;
+        }
+
+        $image = 'https://m.media-amazon.com/images/P/' . strtoupper($m[1]) . '.01._SCLZZZZZZZ_.jpg';
+
+        try {
+            $response = $this->http->head($image, ['headers' => ['User-Agent' => self::USER_AGENT]]);
+            if ($response->getStatusCode() !== 200) {
+                return null;
+            }
+            $length = (int) $response->getHeaderLine('Content-Length');
+            if (str_contains($response->getHeaderLine('Content-Type'), 'gif') || ($length > 0 && $length < 1000)) {
+                return null;
+            }
+        } catch (GuzzleException) {
+            return null;
+        }
+
+        return $image;
+    }
+
     private function looksLikeProductImage(string $url): bool
     {
         $lower = strtolower($url);
+
+        // Amazon serves all of its UI assets from /images/G/
+        if (str_contains($lower, 'amazon.com/images/g/')) {
+            return false;
+        }
 
         // Skip videos
         foreach (['.mp4', '.webm', '.mov', '.avi', 'video/', '_video_', 'video_play', '/video.'] as $v) {

@@ -296,8 +296,25 @@ PROMPT;
 
         $imageLines = implode("\n", array_slice($d['images'] ?? [], 0, 6));
 
+        // Bot-blocked page: the only real input is the URL. Say so explicitly, otherwise
+        // the model fills every field with confident-sounding fiction.
+        $thinData = '';
+        if (!empty($d['blocked'])) {
+            $thinData = <<<NOTE
+
+=== WICHTIG: KEINE SEITENDATEN VERFÜGBAR ===
+Die Produktseite konnte nicht ausgelesen werden. Dir liegen nur die Wörter aus der URL vor.
+- Leite Titel und Produktart AUSSCHLIESSLICH aus den Wörtern in der URL ab.
+- Erfinde KEINE Maße, Marken, Materialien, Größen oder Kompatibilitäten. Lass ein Artikelmerkmal weg, wenn du es nicht aus der URL ableiten kannst.
+- Gib bei "Marke" "Ohne Markenzeichen" an, wenn die URL keine Marke nennt.
+- Wähle eine bewusst allgemeine Kategorie, keine spezielle Unterkategorie.
+
+NOTE;
+        }
+
         return <<<PROMPT
 Du bist ein professioneller eBay.de-Verkäufer. Analysiere die Produktdaten unten und erstelle ein optimiertes deutsches eBay-Inserat.
+{$thinData}
 
 === PRODUKTDATEN ===
 URL: {$d['url']}

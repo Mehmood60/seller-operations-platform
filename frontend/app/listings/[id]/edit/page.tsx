@@ -94,6 +94,7 @@ export default function EditListingPage() {
   // AI re-analyze
   const [analyzing, setAnalyzing]       = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [analyzeWarning, setAnalyzeWarning] = useState<string | null>(null);
   const [analyzed, setAnalyzed]         = useState(false);
   const [savingUrl, setSavingUrl]       = useState(false);
   const [urlSaved, setUrlSaved]         = useState(false);
@@ -249,6 +250,7 @@ export default function EditListingPage() {
     if (!url.trim() || analyzing) return;
     setAnalyzing(true);
     setAnalyzeError(null);
+    setAnalyzeWarning(null);
     setAnalyzed(false);
     setTranslation(null);
     try {
@@ -273,6 +275,7 @@ export default function EditListingPage() {
         images:              raw.images             ?? [],
       });
       setEditorKey(k => k + 1);
+      setAnalyzeWarning(res.data.warning || raw.warning || null);
       setAnalyzed(true);
       // Auto-search eBay category using the AI suggestion
       const catQuery = (s.category_suggestion || s.title || '').trim();
@@ -800,7 +803,12 @@ export default function EditListingPage() {
             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />{analyzeError}
           </div>
         )}
-        {analyzed && !analyzeError && (
+        {analyzeWarning && (
+          <div className="mt-3 flex items-start gap-2 text-amber-800 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-500" />{analyzeWarning}
+          </div>
+        )}
+        {analyzed && !analyzeError && !analyzeWarning && (
           <p className="mt-3 text-sm text-green-700 font-medium">
             ✓ Erneute Analyse abgeschlossen — Felder wurden aktualisiert.
           </p>
