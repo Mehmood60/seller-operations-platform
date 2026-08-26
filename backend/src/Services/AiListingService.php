@@ -16,7 +16,7 @@ class AiListingService
     public function __construct()
     {
         $this->apiKey = $_ENV['GROQ_API_KEY'] ?? '';
-        $this->model  = $_ENV['GROQ_MODEL'] ?? 'llama-3.1-8b-instant';
+        $this->model  = $_ENV['GROQ_MODEL'] ?? 'qwen/qwen3.8-27b';
         $this->http   = new Client(['timeout' => 60]);
     }
 
@@ -33,14 +33,36 @@ class AiListingService
         return $this->parseResponse($rawText);
     }
 
+    /**
+     * Product identifiers can never be guessed — a wrong barcode is worse than none.
+     * eBay's sanctioned opt-out for a product without one is "Nicht zutreffend" (DE).
+     */
+    private const IDENTIFIER_FIELDS = ['ean', 'upc', 'gtin', 'isbn', 'mpn', 'barcode', 'herstellernummer'];
+    private const NO_IDENTIFIER     = 'Nicht zutreffend';
+
     public function suggestSpecifics(string $title, string $description, array $currentSpecifics, array $missingFields): array
     {
         if (empty($this->apiKey)) {
             throw new \RuntimeException('GROQ_API_KEY is not configured.');
         }
 
+        // Answer identifier fields ourselves and keep them out of the prompt entirely,
+        // so the model is never in a position to hallucinate a barcode.
+        $identifiers = [];
+        $askAi       = [];
+        foreach ($missingFields as $field) {
+            if (in_array(strtolower(trim($field)), self::IDENTIFIER_FIELDS, true)) {
+                $identifiers[$field] = self::NO_IDENTIFIER;
+            } else {
+                $askAi[] = $field;
+            }
+        }
+        if (empty($askAi)) {
+            return $identifiers;
+        }
+
         $currentJson = json_encode($currentSpecifics, JSON_UNESCAPED_UNICODE);
-        $fieldsJson  = json_encode($missingFields, JSON_UNESCAPED_UNICODE);
+        $fieldsJson  = json_encode($askAi, JSON_UNESCAPED_UNICODE);
         $cleanDesc   = mb_substr(strip_tags($description), 0, 800);
         $example     = '{"Abteilung":"Damen","Größe":"M","Stil":"N/A"}';
 
@@ -66,8 +88,8 @@ class AiListingService
         }
 
         $data   = json_decode($text, true);
-        $result = [];
-        foreach ($missingFields as $field) {
+        $result = $identifiers;
+        foreach ($askAi as $field) {
             $result[$field] = (is_array($data) && !empty($data[$field])) ? (string) $data[$field] : 'N/A';
         }
 

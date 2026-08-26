@@ -8,6 +8,7 @@ import {
   Languages, Upload, ImageIcon, Search, CheckCircle, ExternalLink, Link2,
 } from 'lucide-react';
 import { ai as aiApi, listings as listingsApi } from '@/lib/api';
+import { extractMissingFields, hasMissingFieldError } from '@/lib/ebayErrors';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import type { RichTextEditorHandle } from '@/components/RichTextEditor';
 import type { AiShipping, ShippingOrigin } from '@/types';
@@ -120,19 +121,6 @@ export default function NewListingPage() {
   const setShipping = <K extends keyof AiShipping>(key: K, val: AiShipping[K]) =>
     setForm(f => ({ ...f, shipping: { ...f.shipping, [key]: val } }));
 
-  const extractMissing = (msg: string): string[] => {
-    const out: string[] = [];
-    // Primary: "The item specific <name> is missing"
-    const re1 = /The item specific ([\s\S]+?) is missing/gi;
-    let m;
-    while ((m = re1.exec(msg)) !== null) out.push(m[1].trim());
-    if (out.length > 0) return [...new Set(out)];
-    // Fallback: "Add <name> to this listing"  (always present in eBay missing-specific messages)
-    const re2 = /Add ([^.]+?) to this listing/gi;
-    while ((m = re2.exec(msg)) !== null) out.push(m[1].trim());
-    return [...new Set(out)];
-  };
-
   const handleSolveWithAI = async () => {
     // Primary: item_specifics rows with empty values (added by publish error handler)
     const emptyFields = form.item_specifics
@@ -140,7 +128,7 @@ export default function NewListingPage() {
       .map(s => s.name.trim());
 
     // Fallback: parse field names out of the error message text
-    const fromError = extractMissing(publishError ?? '');
+    const fromError = extractMissingFields(publishError ?? '');
 
     const missing = emptyFields.length > 0 ? emptyFields : fromError;
 
@@ -463,7 +451,7 @@ export default function NewListingPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Publishing failed.';
       setPublishError(msg);
-      const missing = extractMissing(msg);
+      const missing = extractMissingFields(msg);
       if (missing.length > 0) {
         setTimeout(() => {
           setForm(f => {
@@ -959,7 +947,7 @@ export default function NewListingPage() {
                 <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
                 <span>{saveError ?? publishError}</span>
               </div>
-              {publishError?.includes('is missing') && (
+              {hasMissingFieldError(publishError) && (
                 <div className="flex flex-col gap-1">
                   <button
                     onClick={handleSolveWithAI}

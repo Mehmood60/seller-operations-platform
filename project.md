@@ -577,8 +577,8 @@ Supplier price tracking at `/monitor`:
 |---|---|
 | Provider | Groq (free tier) |
 | Endpoint | `https://api.groq.com/openai/v1/chat/completions` |
-| Default model | `llama-3.1-8b-instant` |
-| Alternative model | `llama-3.3-70b-versatile` |
+| Default model | `qwen/qwen3.8-27b` |
+| Alternative model | `qwen/qwen3.6-27b` |
 | Temperature | 0.3 (consistent structured output) |
 | Max tokens | 256–2048 (varies by endpoint) |
 | Rate limits (free) | 30 req/min, 14,400 req/day |
@@ -741,7 +741,7 @@ EBAY_PROD_API_URL=https://api.ebay.com
 
 # Groq AI (free tier)
 GROQ_API_KEY=<your free Groq API key>
-GROQ_MODEL=llama-3.1-8b-instant
+GROQ_MODEL=qwen/qwen3.8-27b
 ```
 
 ### Frontend (`frontend/.env.local`)

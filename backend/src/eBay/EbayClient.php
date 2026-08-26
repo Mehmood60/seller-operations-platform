@@ -431,6 +431,93 @@ XML;
         return $map[$_ENV['EBAY_SITE_ID'] ?? '77'] ?? ['name' => 'Germany', 'country' => 'DE', 'currency' => 'EUR', 'marketplace' => 'EBAY_DE'];
     }
 
+    /**
+     * The value eBay expects when a product genuinely has no barcode. Sending a made-up
+     * number would be worse than sending nothing — this is the sanctioned opt-out.
+     */
+    private function noIdentifierValue(): string
+    {
+        return $this->getSiteInfo()['country'] === 'DE' ? 'Nicht zutreffend' : 'Does not apply';
+    }
+
+    /** Item specific names that hold a product identifier, lowercased. */
+    private const IDENTIFIER_SPECIFICS = ['ean', 'upc', 'gtin', 'isbn', 'mpn', 'barcode', 'herstellernummer'];
+
+    /**
+     * Fill in the defaults eBay insists on before a listing goes out: a brand, and a
+     * usable value for identifier aspects. "N/A" is rejected as an aspect value, so an
+     * unknown barcode becomes the sanctioned opt-out instead.
+     *
+     * @param  array<string,string> $specifics
+     * @return array<string,string>
+     */
+    private function normaliseSpecifics(array $specifics): array
+    {
+        if (empty($specifics['Marke'])) {
+            $specifics['Marke'] = 'Ohne Markenzeichen';
+        }
+
+        foreach ($specifics as $name => $value) {
+            if (!in_array(strtolower(trim((string)$name)), self::IDENTIFIER_SPECIFICS, true)) {
+                continue;
+            }
+            $value = trim((string)$value);
+            if ($value === '' || strcasecmp($value, 'N/A') === 0) {
+                $specifics[$name] = $this->noIdentifierValue();
+            }
+        }
+
+        return $specifics;
+    }
+
+    /**
+     * Build <ProductListingDetails>. Many categories require EAN as a *structured* field
+     * (error 21919301 "The EAN field is missing"), which item specifics do not satisfy.
+     *
+     * EAN always goes out — with the seller's code, or the opt-out value when the product
+     * has no barcode. ISBN and UPC are only sent when the seller actually supplied one, so
+     * the request never volunteers identifiers eBay did not ask for. Element order follows
+     * the Trading API schema sequence.
+     *
+     * @param array<string,string> $specifics item specifics, searched for seller-supplied codes
+     */
+    private function buildProductListingDetails(array $specifics): string
+    {
+        // Case-insensitive lookup so "EAN", "ean" and "Ean" all resolve.
+        $lookup = [];
+        foreach ($specifics as $name => $value) {
+            $lookup[strtolower(trim((string)$name))] = trim((string)$value);
+        }
+
+        $pick = static function (array $keys) use ($lookup): ?string {
+            foreach ($keys as $key) {
+                $value = $lookup[$key] ?? '';
+                if ($value !== ''
+                    && strcasecmp($value, 'N/A') !== 0
+                    && strcasecmp($value, 'Nicht zutreffend') !== 0
+                    && strcasecmp($value, 'Does not apply') !== 0
+                ) {
+                    return $value;
+                }
+            }
+            return null;
+        };
+
+        $ean  = $pick(['ean', 'gtin', 'barcode']) ?? $this->noIdentifierValue();
+        $isbn = $pick(['isbn']);
+        $upc  = $pick(['upc']);
+
+        $xml = '      <EAN>' . htmlspecialchars($ean, ENT_XML1) . "</EAN>\n";
+        if ($isbn !== null) {
+            $xml .= '      <ISBN>' . htmlspecialchars($isbn, ENT_XML1) . "</ISBN>\n";
+        }
+        if ($upc !== null) {
+            $xml .= '      <UPC>' . htmlspecialchars($upc, ENT_XML1) . "</UPC>\n";
+        }
+
+        return "<ProductListingDetails>\n{$xml}    </ProductListingDetails>";
+    }
+
     private function mapConditionId(string $condition): int
     {
         return match (true) {
@@ -610,10 +697,7 @@ XML;
         $originToLocation = ['DE' => 'Deutschland', 'CN' => 'China', 'GB' => 'United Kingdom', 'US' => 'United States'];
         $location         = $originToLocation[$shipping['origin'] ?? ''] ?? $siteInfo['country'];
 
-        $specifics = (array)($listing['item_specifics'] ?? []);
-        if (empty($specifics['Marke'])) {
-            $specifics['Marke'] = 'Ohne Markenzeichen';
-        }
+        $specifics = $this->normaliseSpecifics((array)($listing['item_specifics'] ?? []));
         $itemSpecificsXml = '';
         foreach ($specifics as $specName => $specValue) {
             $n = htmlspecialchars((string)$specName,  ENT_XML1);
@@ -621,6 +705,7 @@ XML;
             $itemSpecificsXml .= "    <NameValueList><Name>{$n}</Name><Value>{$v}</Value></NameValueList>\n";
         }
         $itemSpecificsBlock = "<ItemSpecifics>\n{$itemSpecificsXml}  </ItemSpecifics>";
+        $productDetailsXml  = $this->buildProductListingDetails($specifics);
 
         $shippingCostXml = $isFree ? '0.00' : $shippingCost;
         $skuXml          = $sku !== '' ? "<SKU>{$sku}</SKU>" : '';
@@ -643,6 +728,7 @@ XML;
     <Location>{$location}</Location>
     <Site>{$siteInfo['name']}</Site>
     {$itemSpecificsBlock}
+    {$productDetailsXml}
     {$pictureDetailsXml}
     <ShippingDetails>
       <ShippingType>Flat</ShippingType>
@@ -742,10 +828,7 @@ XML;
         $dispatchMax     = max(1, (int)($shipping['processing_days_max'] ?? 2));
         $shippingService = $this->mapShippingService($shipping['service'] ?? '', $shipping['origin'] ?? 'DE');
 
-        $specifics = (array)($listing['item_specifics'] ?? []);
-        if (empty($specifics['Marke'])) {
-            $specifics['Marke'] = 'Ohne Markenzeichen';
-        }
+        $specifics = $this->normaliseSpecifics((array)($listing['item_specifics'] ?? []));
         $itemSpecificsXml = '';
         foreach ($specifics as $specName => $specValue) {
             $n = htmlspecialchars((string)$specName,  ENT_XML1);
@@ -753,6 +836,7 @@ XML;
             $itemSpecificsXml .= "    <NameValueList><Name>{$n}</Name><Value>{$v}</Value></NameValueList>\n";
         }
         $itemSpecificsBlock = "<ItemSpecifics>\n{$itemSpecificsXml}  </ItemSpecifics>";
+        $productDetailsXml  = $this->buildProductListingDetails($specifics);
 
         $pictureXml = '';
         foreach ($pictureUrls as $url) {
@@ -778,6 +862,7 @@ XML;
     <Quantity>{$quantity}</Quantity>
     <ConditionID>{$conditionId}</ConditionID>
     {$itemSpecificsBlock}
+    {$productDetailsXml}
     {$pictureDetailsXml}
     <ShippingDetails>
       <ShippingType>Flat</ShippingType>

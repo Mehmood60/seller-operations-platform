@@ -413,7 +413,7 @@ After both servers are running:
 | `EBAY_SCOPES` | Yes | *(see .env.example)* | Space-separated OAuth scopes |
 | `EBAY_SANDBOX` | Yes | `true` | `true` = sandbox, `false` = production |
 | `GROQ_API_KEY` | **Yes** | `gsk_...` | Free key from [console.groq.com](https://console.groq.com) — required for all AI features |
-| `GROQ_MODEL` | No | `llama-3.1-8b-instant` | Groq model ID (default is free-tier fast model) |
+| `GROQ_MODEL` | No | `qwen/qwen3.8-27b` | Groq model ID (default is free-tier fast model) |
 | `EBAY_SANDBOX_AUTH_URL` | Yes | *(see .env.example)* | eBay sandbox auth endpoint |
 | `EBAY_SANDBOX_TOKEN_URL` | Yes | *(see .env.example)* | eBay sandbox token endpoint |
 | `EBAY_SANDBOX_API_URL` | Yes | *(see .env.example)* | eBay sandbox API base URL |
