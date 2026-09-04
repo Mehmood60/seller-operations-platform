@@ -42,8 +42,9 @@ class EbaySyncService
                 'offset' => $offset,
             ];
 
-            if ($lastSyncedAt) {
-                $query['filter'] = 'lastmodifieddate:[' . $lastSyncedAt . '..]';
+            $filterFrom = $this->toEbayTimestamp($lastSyncedAt);
+            if ($filterFrom !== null) {
+                $query['filter'] = 'lastmodifieddate:[' . $filterFrom . '..]';
             }
 
             try {
@@ -176,6 +177,26 @@ class EbaySyncService
     public function getSyncStateData(): array
     {
         return $this->getSyncState();
+    }
+
+    /**
+     * eBay's Fulfillment API only accepts UTC ISO 8601 timestamps of the form
+     * 2026-07-09T07:43:38.000Z. Anything else (e.g. date('c')'s +00:00 offset)
+     * comes back as errorId 30810 "Invalid date format".
+     */
+    private function toEbayTimestamp(?string $timestamp): ?string
+    {
+        if ($timestamp === null || $timestamp === '') {
+            return null;
+        }
+
+        try {
+            $date = new \DateTimeImmutable($timestamp);
+        } catch (\Exception $e) {
+            return null;
+        }
+
+        return $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.v\Z');
     }
 
     private function getSyncState(): array
