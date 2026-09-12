@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { ai as aiApi, listings as listingsApi } from '@/lib/api';
 import { extractMissingFields, hasMissingFieldError } from '@/lib/ebayErrors';
+import { fileToListingImage } from '@/lib/images';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import type { AiShipping, HealthScore, ShippingOrigin } from '@/types';
 
@@ -458,24 +459,15 @@ export default function EditListingPage() {
     if (files.length === 0) return;
 
     const toRead = files.slice(0, remaining);
-    const readers: Promise<string>[] = toRead.map(
-      file => new Promise((resolve, reject) => {
-        if (!file.type.startsWith('image/')) {
-          reject(new Error(`"${file.name}" is not an image.`));
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload  = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error(`Could not read "${file.name}".`));
-        reader.readAsDataURL(file);
-      })
-    );
+    // fileToListingImage re-encodes to JPEG at listing size — eBay Picture
+    // Services rejects the raw bytes of formats like WebP or HEIC as corrupt.
+    const readers = toRead.map(file => fileToListingImage(file));
 
     Promise.allSettled(readers).then(results => {
       const dataUrls: string[] = [];
       for (const r of results) {
         if (r.status === 'fulfilled') dataUrls.push(r.value);
-        else setUploadError(r.reason?.message ?? 'Upload failed');
+        else setUploadError(r.reason instanceof Error ? r.reason.message : 'Upload failed');
       }
       if (dataUrls.length) set('images', [...form.images, ...dataUrls]);
     });

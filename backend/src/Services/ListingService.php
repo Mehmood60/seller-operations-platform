@@ -112,6 +112,9 @@ class ListingService
         $updated = array_merge($draft, [
             'status'       => 'ACTIVE',
             'ebay_item_id' => $ebayItemId,
+            // Uploaded images come back as eBay-hosted URLs: store those so the
+            // draft's base64 copies are not kept and re-uploaded on every edit.
+            'images'       => !empty($result['picture_urls']) ? $result['picture_urls'] : $draft['images'],
             'listed_at'    => $result['start_time'] ?? date('c'),
             'ends_at'      => $result['end_time']   ?? '',
             'listing_url'  => $ebayItemId ? "https://www.{$domain}/itm/{$ebayItemId}" : '',
@@ -155,7 +158,11 @@ class ListingService
             'shipping'       => $data['shipping']        ?? $existing['shipping'],
         ]);
 
-        $this->ebayClient->reviseFixedPriceItem($merged);
+        $result = $this->ebayClient->reviseFixedPriceItem($merged);
+
+        if (!empty($result['picture_urls'])) {
+            $merged['images'] = $result['picture_urls'];
+        }
 
         return $this->repo->save($merged);
     }

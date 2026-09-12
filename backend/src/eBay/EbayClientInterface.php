@@ -54,9 +54,19 @@ interface EbayClientInterface
 
     /**
      * Upload a base64-encoded image to eBay Picture Services (EPS).
+     * The bytes are sent as the binary MIME attachment EPS requires and are
+     * re-encoded first if eBay does not host the format.
      * Returns the full hosted picture URL.
      */
     public function uploadPicture(string $base64Data, string $name = 'image'): string;
+
+    /**
+     * Copy a picture from someone else's server into eBay Picture Services, so a
+     * pasted link can share a listing with uploaded files (eBay rejects a mixture
+     * of self-hosted and EPS pictures).
+     * Returns the full hosted picture URL.
+     */
+    public function uploadPictureFromUrl(string $url, string $name = 'image'): string;
 
     /**
      * Get eBay category suggestions for a search query.
@@ -67,14 +77,15 @@ interface EbayClientInterface
     /**
      * Create a fixed-price listing on eBay via AddFixedPriceItem.
      * Automatically uploads data: images to EPS before publishing.
-     * Returns ['ebay_item_id' => string, 'start_time' => string, 'end_time' => string].
+     * Returns ['ebay_item_id' => string, 'start_time' => string, 'end_time' => string,
+     * 'picture_urls' => string[]] — the EPS URLs the images resolved to.
      */
     public function addFixedPriceItem(array $listing): array;
 
     /**
      * Update an existing fixed-price listing on eBay via ReviseFixedPriceItem.
      * Listing must have a valid ebay_item_id. Automatically uploads new data: images.
-     * Returns ['ebay_item_id' => string, 'end_time' => string].
+     * Returns ['ebay_item_id' => string, 'end_time' => string, 'picture_urls' => string[]].
      */
     public function reviseFixedPriceItem(array $listing): array;
 

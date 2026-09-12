@@ -15,6 +15,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && docker-php-ext-enable opcache \
     && rm -rf /var/lib/apt/lists/*
 
+# A listing carries up to 12 images inline as base64 data: URLs, which is more
+# than PHP's stock 8M post_max_size — over that limit the body is dropped and the
+# request looks like it arrived empty.
+RUN printf '%s\n' \
+        'post_max_size=48M' \
+        'upload_max_filesize=48M' \
+        'memory_limit=256M' \
+    > /usr/local/etc/php/conf.d/uploads.ini
+
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 

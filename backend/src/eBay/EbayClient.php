@@ -541,47 +541,325 @@ XML;
         return 'DE_DHLPaket';
     }
 
+    /**
+     * Turn the seller's images into picture URLs eBay will take for a listing.
+     *
+     * eBay refuses a listing that mixes its own EPS pictures with self-hosted
+     * ones ("A mixture of Self Hosted and EPS pictures are not allowed",
+     * code 20004), so everything is pushed through EPS: files from the computer
+     * arrive as data: URLs and are uploaded, pasted links are copied into EPS by
+     * URL, and pictures already hosted by eBay are passed straight through. That
+     * is what lets one listing use both sources at once.
+     */
+    private function resolvePictureUrls(array $images): array
+    {
+        $pictureUrls = [];
+
+        foreach (array_slice(array_values($images), 0, 12) as $i => $img) {
+            $img  = trim((string)$img);
+            $name = 'image_' . ($i + 1);
+
+            if (str_starts_with($img, 'data:')) {
+                if (preg_match('/^data:[^;,]*;base64,(.+)$/s', $img, $m)) {
+                    $pictureUrls[] = $this->uploadPicture($m[1], $name);
+                }
+                continue;
+            }
+            if (!preg_match('#^https?://#i', $img)) {
+                continue;
+            }
+            $pictureUrls[] = $this->isEbayHostedPicture($img)
+                ? $img
+                : $this->uploadPictureFromUrl($img, $name);
+        }
+
+        return $pictureUrls;
+    }
+
+    /** True for pictures eBay already hosts — EPS URLs live on ebayimg.com. */
+    private function isEbayHostedPicture(string $url): bool
+    {
+        $host = strtolower((string)(parse_url($url, PHP_URL_HOST) ?? ''));
+
+        return $host === 'ebayimg.com' || str_ends_with($host, '.ebayimg.com');
+    }
+
     // ── UploadSiteHostedPictures ──────────────────────────────────────────────
+
+    /** Image formats eBay Picture Services accepts, keyed by detected MIME type. */
+    private const EPS_FORMATS = [
+        'image/jpeg'     => 'jpg',
+        'image/pjpeg'    => 'jpg',
+        'image/png'      => 'png',
+        'image/gif'      => 'gif',
+        'image/bmp'      => 'bmp',
+        'image/x-ms-bmp' => 'bmp',
+        'image/tiff'     => 'tif',
+    ];
+
+    /** EPS rejects anything larger than 12 MB of image data. */
+    private const EPS_MAX_BYTES = 12 * 1024 * 1024;
+
+    /** Image CDNs serve bot user agents smaller files, or nothing at all. */
+    private const IMAGE_FETCH_USER_AGENT =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
     public function uploadPicture(string $base64Data, string $name = 'image'): string
     {
-        $token        = $this->getValidAccessToken();
-        $safeName     = htmlspecialchars($name, ENT_XML1);
+        return $this->uploadBinaryPicture($this->decodeImageData($base64Data), $name);
+    }
 
-        $xml = <<<XML
+    /** Send raw image bytes to EPS as the binary MIME attachment it expects. */
+    private function uploadBinaryPicture(string $binary, string $name): string
+    {
+        $mime     = $this->detectImageMime($binary);
+        $safeName = $this->pictureName($name);
+
+        // EPS wants the picture as a binary MIME attachment that follows the XML
+        // part in the same POST — <PictureData> is only a reference to that
+        // attachment, never the bytes. Inlining base64 there makes eBay read the
+        // text as image headers and answer "file contains corrupt image data".
+        $xml = $this->pictureUploadXml($safeName);
+
+        // Guzzle sets its own multipart Content-Type (with the boundary); leaving
+        // the text/xml header in place would make eBay parse the body as one blob.
+        $headers = $this->tradingHeaders('UploadSiteHostedPictures');
+        unset($headers['Content-Type']);
+
+        return $this->sendPictureUpload([
+            'headers'   => $headers,
+            'multipart' => [
+                [
+                    'name'     => 'XML Payload',
+                    'contents' => $xml,
+                    'headers'  => ['Content-Type' => 'text/xml; charset=utf-8'],
+                ],
+                [
+                    'name'     => 'image',
+                    'contents' => $binary,
+                    'filename' => $safeName . '.' . self::EPS_FORMATS[$mime],
+                    'headers'  => ['Content-Type' => $mime],
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Copy a picture that lives on someone else's server into EPS.
+     *
+     * eBay fetches the URL itself (ExternalPictureURL). Hosts that refuse its
+     * fetcher — Amazon above all — are downloaded here and sent as bytes, so a
+     * pasted link ends up as an eBay-hosted picture either way.
+     */
+    public function uploadPictureFromUrl(string $url, string $name = 'image'): string
+    {
+        $safeName = $this->pictureName($name);
+        $xml      = $this->pictureUploadXml($safeName, $url);
+
+        try {
+            return $this->sendPictureUpload([
+                'headers' => $this->tradingHeaders('UploadSiteHostedPictures'),
+                'body'    => $xml,
+            ]);
+        } catch (\RuntimeException $e) {
+            $binary = $this->downloadImage($url);
+            if ($binary === null) {
+                throw new \RuntimeException(sprintf(
+                    'eBay could not load the image at %s (%s). Save it to your computer and upload the file instead.',
+                    $url,
+                    $e->getMessage()
+                ), 0, $e);
+            }
+            return $this->uploadBinaryPicture($binary, $name);
+        }
+    }
+
+    /** UploadSiteHostedPictures payload — with a URL for eBay to fetch, or without for an attachment. */
+    private function pictureUploadXml(string $safeName, ?string $externalUrl = null): string
+    {
+        $token    = $this->getValidAccessToken();
+        $external = $externalUrl !== null
+            ? '  <ExternalPictureURL>' . htmlspecialchars($externalUrl, ENT_XML1) . "</ExternalPictureURL>\n"
+            : '';
+
+        return <<<XML
 <?xml version="1.0" encoding="utf-8"?>
 <UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
   <RequesterCredentials><eBayAuthToken>{$token}</eBayAuthToken></RequesterCredentials>
   <PictureName>{$safeName}</PictureName>
-  <PictureData>{$base64Data}</PictureData>
-</UploadSiteHostedPicturesRequest>
+  <PictureSet>Standard</PictureSet>
+{$external}</UploadSiteHostedPicturesRequest>
 XML;
+    }
 
+    private function pictureName(string $name): string
+    {
+        return htmlspecialchars(mb_substr($name, 0, 80), ENT_XML1);
+    }
+
+    /** Run an UploadSiteHostedPictures request and return the hosted picture URL. */
+    private function sendPictureUpload(array $options): string
+    {
         try {
-            $response = $this->http->post($this->tradingUrl(), [
-                'headers' => $this->tradingHeaders('UploadSiteHostedPictures'),
-                'body'    => $xml,
-            ]);
-
-            $xmlResp = @simplexml_load_string((string)$response->getBody());
-            if ($xmlResp === false) {
-                throw new \RuntimeException('Invalid response from eBay picture upload.');
-            }
-
-            $ack = strtolower((string)($xmlResp->Ack ?? ''));
-            if ($ack === 'failure') {
-                $msg = trim(strip_tags((string)($xmlResp->Errors->ShortMessage ?? 'Unknown upload error')));
-                throw new \RuntimeException('eBay picture upload failed: ' . $msg);
-            }
-
-            $url = (string)($xmlResp->SiteHostedPictureDetails->FullURL ?? '');
-            if ($url === '') {
-                throw new \RuntimeException('No URL returned from eBay picture upload.');
-            }
-            return $url;
+            $response = $this->http->post($this->tradingUrl(), $options);
         } catch (GuzzleException $e) {
             throw new \RuntimeException('Failed to upload picture: ' . $e->getMessage(), 0, $e);
         }
+
+        $xmlResp = @simplexml_load_string((string)$response->getBody());
+        if ($xmlResp === false) {
+            throw new \RuntimeException('Invalid response from eBay picture upload.');
+        }
+
+        $ack = strtolower((string)($xmlResp->Ack ?? ''));
+        if ($ack === 'failure') {
+            $short = trim(strip_tags((string)($xmlResp->Errors->ShortMessage ?? '')));
+            $long  = trim(strip_tags((string)($xmlResp->Errors->LongMessage  ?? '')));
+            $msg   = $long !== '' && $long !== $short ? $short . ' — ' . $long : $short;
+            throw new \RuntimeException('eBay picture upload failed: ' . ($msg ?: 'Unknown upload error'));
+        }
+
+        $url = (string)($xmlResp->SiteHostedPictureDetails->FullURL ?? '');
+        if ($url === '') {
+            throw new \RuntimeException('No URL returned from eBay picture upload.');
+        }
+        return $url;
+    }
+
+    /** Fetch a remote image as bytes, or null when the host will not serve it to us. */
+    private function downloadImage(string $url): ?string
+    {
+        if (!$this->isPublicHttpUrl($url)) {
+            return null;
+        }
+
+        try {
+            $response = $this->http->get($url, [
+                'headers' => [
+                    'User-Agent' => self::IMAGE_FETCH_USER_AGENT,
+                    'Accept'     => 'image/avif,image/webp,image/png,image/jpeg,*/*;q=0.8',
+                    'Referer'    => $this->originOf($url),
+                ],
+                'allow_redirects' => ['max' => 5],
+                'timeout'         => 20,
+            ]);
+        } catch (GuzzleException) {
+            return null;
+        }
+
+        $binary = (string)$response->getBody();
+        if ($binary === '' || strlen($binary) > self::EPS_MAX_BYTES) {
+            return null;
+        }
+        return $binary;
+    }
+
+    /**
+     * Whether the server may fetch this URL at all. The address comes from the
+     * seller, so it must not be turned into a request against our own network
+     * (localhost, the VM's metadata service, other containers).
+     */
+    private function isPublicHttpUrl(string $url): bool
+    {
+        $parts  = parse_url($url);
+        $scheme = strtolower((string)($parts['scheme'] ?? ''));
+        $host   = (string)($parts['host'] ?? '');
+
+        if ($host === '' || !in_array($scheme, ['http', 'https'], true)) {
+            return false;
+        }
+
+        // gethostbyname() echoes the input back when it cannot resolve the name.
+        $ip = filter_var($host, FILTER_VALIDATE_IP) ? $host : gethostbyname($host);
+
+        return (bool)filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+    }
+
+    /** Scheme + host of a URL, which some CDNs insist on seeing as the referer. */
+    private function originOf(string $url): string
+    {
+        $parts = parse_url($url);
+        return isset($parts['scheme'], $parts['host'])
+            ? $parts['scheme'] . '://' . $parts['host'] . '/'
+            : '';
+    }
+
+    /**
+     * Turn the base64 payload of a data: URL into raw image bytes.
+     * Tolerates the line breaks and URL-safe alphabet some clients produce.
+     */
+    private function decodeImageData(string $base64Data): string
+    {
+        $clean  = strtr(preg_replace('/\s+/', '', $base64Data) ?? '', '-_', '+/');
+        $binary = base64_decode($clean, true);
+
+        if ($binary === false || $binary === '') {
+            throw new \RuntimeException(
+                'Image data could not be read (invalid encoding). Please remove the image and add it again.'
+            );
+        }
+        if (strlen($binary) > self::EPS_MAX_BYTES) {
+            throw new \RuntimeException(sprintf(
+                'Image is too large for eBay (%.1f MB, limit 12 MB). Please use a smaller image.',
+                strlen($binary) / 1048576
+            ));
+        }
+        return $binary;
+    }
+
+    /**
+     * Identify the image format from its own header bytes — the data: URL's stated
+     * MIME type is whatever the uploading browser guessed and cannot be trusted.
+     * Converts formats eBay does not host (WebP/AVIF) when GD can read them.
+     */
+    private function detectImageMime(string &$binary): string
+    {
+        $info = @getimagesizefromstring($binary);
+        $mime = is_array($info) ? strtolower((string)($info['mime'] ?? '')) : '';
+
+        if (isset(self::EPS_FORMATS[$mime])) {
+            return $mime;
+        }
+
+        $jpeg = $this->convertToJpeg($binary);
+        if ($jpeg !== null) {
+            $binary = $jpeg;
+            return 'image/jpeg';
+        }
+
+        throw new \RuntimeException(sprintf(
+            'eBay does not accept this image format (%s). Please upload a JPG, PNG, GIF, BMP or TIFF file.',
+            $mime !== '' ? $mime : 'unrecognised'
+        ));
+    }
+
+    /** Re-encode an image as JPEG via GD, or null when GD cannot decode it. */
+    private function convertToJpeg(string $binary): ?string
+    {
+        if (!function_exists('imagecreatefromstring') || !function_exists('imagejpeg')) {
+            return null;
+        }
+
+        $image = @imagecreatefromstring($binary);
+        if ($image === false) {
+            return null;
+        }
+
+        // Flatten transparency onto white; JPEG has no alpha channel.
+        $flat = @imagecreatetruecolor(imagesx($image), imagesy($image));
+        if ($flat !== false) {
+            imagefill($flat, 0, 0, imagecolorallocate($flat, 255, 255, 255));
+            imagecopy($flat, $image, 0, 0, 0, 0, imagesx($image), imagesy($image));
+            imagedestroy($image);
+            $image = $flat;
+        }
+
+        ob_start();
+        $ok = imagejpeg($image, null, 90);
+        $jpeg = (string)ob_get_clean();
+        imagedestroy($image);
+
+        return $ok && $jpeg !== '' ? $jpeg : null;
     }
 
     private function getApplicationToken(): string
@@ -651,17 +929,7 @@ XML;
     {
         $token = $this->getValidAccessToken();
 
-        // Resolve images: upload data: URLs to EPS; pass https:// as-is
-        $pictureUrls = [];
-        foreach (array_slice($listing['images'] ?? [], 0, 12) as $i => $img) {
-            if (str_starts_with($img, 'data:')) {
-                if (preg_match('/^data:[^;]+;base64,(.+)$/s', $img, $m)) {
-                    $pictureUrls[] = $this->uploadPicture($m[1], 'image_' . ($i + 1));
-                }
-            } elseif (str_starts_with($img, 'http')) {
-                $pictureUrls[] = $img;
-            }
-        }
+        $pictureUrls = $this->resolvePictureUrls($listing['images'] ?? []);
 
         $title       = htmlspecialchars(mb_substr($listing['title'] ?? '', 0, 80), ENT_XML1);
         $description = $listing['description'] ?? '';
@@ -785,6 +1053,9 @@ XML;
                 'ebay_item_id' => (string)($xmlResp->ItemID    ?? ''),
                 'start_time'   => (string)($xmlResp->StartTime ?? ''),
                 'end_time'     => (string)($xmlResp->EndTime   ?? ''),
+                // The EPS URLs the uploads became, so the caller can store those
+                // instead of keeping (and re-uploading) the base64 originals.
+                'picture_urls' => $pictureUrls,
             ];
         } catch (GuzzleException $e) {
             throw new \RuntimeException('Failed to create eBay listing: ' . $e->getMessage(), 0, $e);
@@ -801,17 +1072,7 @@ XML;
             throw new \InvalidArgumentException('Listing has no ebay_item_id — cannot revise.');
         }
 
-        // Resolve images: upload data: URLs to EPS; pass https:// as-is
-        $pictureUrls = [];
-        foreach (array_slice($listing['images'] ?? [], 0, 12) as $i => $img) {
-            if (str_starts_with($img, 'data:')) {
-                if (preg_match('/^data:[^;]+;base64,(.+)$/s', $img, $m)) {
-                    $pictureUrls[] = $this->uploadPicture($m[1], 'image_' . ($i + 1));
-                }
-            } elseif (str_starts_with($img, 'http')) {
-                $pictureUrls[] = $img;
-            }
-        }
+        $pictureUrls = $this->resolvePictureUrls($listing['images'] ?? []);
 
         $title       = htmlspecialchars(mb_substr($listing['title'] ?? '', 0, 80), ENT_XML1);
         $description = $listing['description'] ?? '';
@@ -913,6 +1174,7 @@ XML;
             return [
                 'ebay_item_id' => (string)($xmlResp->ItemID  ?? $ebayItemId),
                 'end_time'     => (string)($xmlResp->EndTime ?? ''),
+                'picture_urls' => $pictureUrls,
             ];
         } catch (GuzzleException $e) {
             throw new \RuntimeException('Failed to update eBay listing: ' . $e->getMessage(), 0, $e);
