@@ -331,7 +331,7 @@ The `RepositoryInterface` abstraction already exists. Switching `STORAGE_DRIVER=
 |---|---|
 | Grant type | `authorization_code` |
 | Environments | Sandbox (`auth.sandbox.ebay.com`) / Production (`auth.ebay.com`) |
-| Scopes | `sell.fulfillment.readonly`, `sell.inventory`, `commerce.identity.readonly` |
+| Scopes | `sell.fulfillment.readonly`, `sell.inventory`, `sell.marketing`, `commerce.identity.readonly` |
 | Token storage | AES-256-CBC encrypted in `data/tokens.json` |
 | Auto-refresh | Access token is refreshed automatically when expired; refresh token TTL ~180 days |
 
@@ -726,7 +726,7 @@ EBAY_CLIENT_SECRET=...
 EBAY_DEV_ID=...
 EBAY_SITE_ID=77
 EBAY_REDIRECT_URI=<RuName string from eBay developer console>
-EBAY_SCOPES=sell.fulfillment.readonly sell.inventory commerce.identity.readonly
+EBAY_SCOPES=sell.fulfillment.readonly sell.inventory sell.marketing commerce.identity.readonly
 EBAY_SANDBOX=true
 
 # eBay Endpoints (Sandbox)

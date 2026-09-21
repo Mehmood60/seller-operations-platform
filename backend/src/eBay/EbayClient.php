@@ -397,6 +397,94 @@ XML;
         return $this->apiBaseUrl;
     }
 
+    // ── Sell API (JSON) helpers ───────────────────────────────────────────────
+
+    /**
+     * The marketplace this seller account trades on, derived from EBAY_SITE_ID.
+     * The Marketing API scopes campaigns per marketplace, so it has to match the
+     * site the listings actually live on rather than a hard-coded default.
+     */
+    public function marketplaceId(): string
+    {
+        return $this->getSiteInfo()['marketplace'];
+    }
+
+    /**
+     * Authenticated JSON call against a Sell API (Marketing, Inventory, …).
+     *
+     * Unlike get(), a 4xx is returned rather than thrown: the caller needs to tell
+     * "no ad exists yet" (404) apart from a real failure, and eBay's own error text
+     * is more useful than Guzzle's generic message.
+     *
+     * @return array{status:int, data:array, location:string, error:string}
+     */
+    public function sellRequest(string $method, string $path, ?array $body = null, array $query = []): array
+    {
+        $token = $this->getValidAccessToken();
+
+        $options = [
+            'headers' => [
+                'Authorization'           => 'Bearer ' . $token,
+                'Content-Type'            => 'application/json',
+                'Accept'                  => 'application/json',
+                'X-EBAY-C-MARKETPLACE-ID' => $this->marketplaceId(),
+            ],
+            'http_errors' => false,
+        ];
+        if ($query !== []) {
+            $options['query'] = $query;
+        }
+        if ($body !== null) {
+            $options['json'] = $body;
+        }
+
+        try {
+            $response = $this->http->request($method, $path, $options);
+        } catch (GuzzleException $e) {
+            throw new \RuntimeException('eBay API error on ' . $method . ' ' . $path . ': ' . $e->getMessage(), 0, $e);
+        }
+
+        $status = $response->getStatusCode();
+        $raw    = (string)$response->getBody();
+        $data   = json_decode($raw, true);
+        $data   = is_array($data) ? $data : [];
+
+        return [
+            'status'   => $status,
+            'data'     => $data,
+            'location' => $response->getHeaderLine('Location'),
+            'error'    => $status >= 400 ? $this->describeSellError($data, $status, $raw) : '',
+        ];
+    }
+
+    /**
+     * Flatten eBay's errors[] envelope into one readable line. A missing-scope 403 gets
+     * an explicit hint appended — the fix (re-running OAuth consent) is not something
+     * eBay's own wording makes obvious.
+     */
+    private function describeSellError(array $data, int $status, string $raw): string
+    {
+        $parts = [];
+        foreach ($data['errors'] ?? [] as $err) {
+            $msg = trim((string)($err['longMessage'] ?? $err['message'] ?? ''));
+            if ($msg === '') {
+                continue;
+            }
+            $code    = (string)($err['errorId'] ?? '');
+            $parts[] = ($code !== '' ? "(code {$code}) " : '') . $msg;
+        }
+
+        $text = $parts !== []
+            ? implode(' | ', $parts)
+            : 'HTTP ' . $status . ($raw !== '' ? ': ' . mb_substr($raw, 0, 300) : '');
+
+        if (($status === 403 || $status === 401) && stripos($text, 'scope') !== false) {
+            $text .= ' — reconnect your eBay account so the sell.marketing scope is granted.';
+        }
+
+        return $text;
+    }
+
     // ── Trading API helpers ───────────────────────────────────────────────────
 
     private function tradingUrl(): string

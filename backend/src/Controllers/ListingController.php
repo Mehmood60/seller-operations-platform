@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Services\EbayCompetitorService;
 use App\Services\ListingHealthService;
 use App\Services\ListingService;
+use App\Services\PromotionService;
 use App\Helpers\Response;
 
 class ListingController
@@ -15,6 +16,7 @@ class ListingController
         private readonly ListingService         $listingService,
         private readonly EbayCompetitorService  $competitorService,
         private readonly ListingHealthService   $healthService,
+        private readonly PromotionService       $promotionService,
     ) {}
 
     private const ALLOWED_STATUSES = ['ACTIVE', 'ENDED', 'OUT_OF_STOCK', 'DRAFT'];
@@ -67,6 +69,8 @@ class ListingController
         try {
             $listing = $this->listingService->createDraft($body);
             Response::json($listing, [], 201);
+        } catch (\InvalidArgumentException $e) {
+            Response::error($e->getMessage(), 422);
         } catch (\Exception $e) {
             Response::error($e->getMessage(), 500);
         }
@@ -157,6 +161,44 @@ class ListingController
             return;
         }
         Response::json($this->healthService->score($listing));
+    }
+
+    // ── Promoted Listings (Basis / cost-per-sale) ─────────────────────────────
+
+    public function promotion(array $params): void
+    {
+        $state = $this->promotionService->status($params['id'] ?? '');
+        if ($state === null) {
+            Response::error('Listing not found.', 404);
+            return;
+        }
+        Response::json($state);
+    }
+
+    public function setPromotion(array $params): void
+    {
+        $body = json_decode((string) file_get_contents('php://input'), true) ?? [];
+
+        if (!array_key_exists('enabled', $body)) {
+            Response::error('enabled is required.', 422);
+            return;
+        }
+
+        $enabled = filter_var($body['enabled'], FILTER_VALIDATE_BOOLEAN);
+        $adRate  = isset($body['ad_rate']) ? (string) $body['ad_rate'] : null;
+
+        try {
+            $state = $this->promotionService->set($params['id'] ?? '', $enabled, $adRate);
+            if ($state === null) {
+                Response::error('Listing not found.', 404);
+                return;
+            }
+            Response::json($state);
+        } catch (\InvalidArgumentException $e) {
+            Response::error($e->getMessage(), 422);
+        } catch (\RuntimeException $e) {
+            Response::error($e->getMessage(), 502);
+        }
     }
 
     public function suggestCategories(array $params): void

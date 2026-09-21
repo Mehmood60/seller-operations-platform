@@ -95,4 +95,17 @@ interface EbayClientInterface
      * Returns an array of competitor listings sorted cheapest-first.
      */
     public function searchItems(string $keywords, int $limit = 10): array;
+
+    /**
+     * The marketplace (EBAY_DE, EBAY_GB, …) this seller account trades on.
+     */
+    public function marketplaceId(): string;
+
+    /**
+     * Authenticated JSON call against a Sell API. Returns the status rather than
+     * throwing on 4xx so callers can distinguish "not found" from a real failure.
+     *
+     * @return array{status:int, data:array, location:string, error:string}
+     */
+    public function sellRequest(string $method, string $path, ?array $body = null, array $query = []): array;
 }

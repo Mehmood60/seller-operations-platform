@@ -97,6 +97,24 @@ export interface ListingQuantity {
 
 export type ListingStatus = 'ACTIVE' | 'ENDED' | 'OUT_OF_STOCK' | 'DRAFT';
 
+/**
+ * Promoted Listings "Basis" state for one listing — eBay's cost-per-sale ad model.
+ * `live` is false while the listing is still a draft, in which case `enabled` is an
+ * intention that gets applied to eBay the moment the listing is published.
+ */
+export interface ListingPromotion {
+  enabled: boolean;
+  ad_rate: string;
+  ad_id: string;
+  campaign_id: string;
+  synced_at: string;
+  sync_error: string;
+  live: boolean;
+  applies_on_publish: boolean;
+  min_ad_rate: number;
+  max_ad_rate: number;
+}
+
 export interface Listing {
   id: string;
   ebay_item_id: string;
@@ -113,6 +131,7 @@ export interface Listing {
   listed_at: string;
   ends_at: string;
   synced_at: string;
+  promotion?: ListingPromotion;
 }
 
 // ─── Analytics / Dashboard ──────────────────────────────────────────────────

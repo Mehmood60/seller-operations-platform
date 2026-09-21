@@ -12,7 +12,8 @@ import { extractMissingFields, hasMissingFieldError } from '@/lib/ebayErrors';
 import { fileToListingImage } from '@/lib/images';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import type { RichTextEditorHandle } from '@/components/RichTextEditor';
-import type { AiShipping, ShippingOrigin } from '@/types';
+import { PromotedListing, DEFAULT_PROMOTION, type PromotionChoice } from '@/components/PromotedListing';
+import type { AiShipping, ListingPromotion, ShippingOrigin } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -98,7 +99,7 @@ export default function NewListingPage() {
   // publish
   const [publishing, setPublishing]             = useState(false);
   const [publishError, setPublishError]         = useState<string | null>(null);
-  const [publishedListing, setPublishedListing] = useState<{ listing_url?: string } | null>(null);
+  const [publishedListing, setPublishedListing] = useState<{ listing_url?: string; promotion?: ListingPromotion } | null>(null);
   const [solvingAI, setSolvingAI]               = useState(false);
   const [aiSolveError, setAiSolveError]         = useState<string | null>(null);
 
@@ -107,6 +108,9 @@ export default function NewListingPage() {
   const [catSuggestions, setCatSuggestions]     = useState<CategorySuggestion[]>([]);
   const [showCatDrop, setShowCatDrop]           = useState(false);
   const [catSearchError, setCatSearchError]     = useState<string | null>(null);
+
+  // Promoted Listings — nothing exists on eBay yet, so this rides along with the draft.
+  const [promotion, setPromotion]       = useState<PromotionChoice>(DEFAULT_PROMOTION);
 
   // add image
   const [uploadError, setUploadError]   = useState<string | null>(null);
@@ -366,6 +370,7 @@ export default function NewListingPage() {
         item_specifics: specificsPayload(),
         images:         form.images,
         source_url:     url,
+        promotion,
         shipping: {
           type:                 form.shipping.type,
           cost:                 form.shipping.cost,
@@ -430,6 +435,7 @@ export default function NewListingPage() {
         price: form.price, quantity: form.quantity, sku: form.sku,
         category: form.category_suggestion, category_id: form.category_id,
         keywords: form.keywords, item_specifics: specificsPayload(), images: form.images, source_url: url,
+        promotion,
         shipping: {
           type: form.shipping.type, cost: form.shipping.cost, service: form.shipping.service,
           processing_days_min: form.shipping.processing_days_min, processing_days_max: form.shipping.processing_days_max,
@@ -922,6 +928,13 @@ export default function NewListingPage() {
           </div>
         </div>
 
+        {/* Advertising */}
+        <PromotedListing
+          value={promotion}
+          onChange={setPromotion}
+          priceValue={form.price}
+        />
+
         {/* Actions */}
         <div className="space-y-3 pt-4 border-t border-gray-100">
           {canSave && form.price.trim() && !form.category_id && !publishedListing && (
@@ -964,6 +977,12 @@ export default function NewListingPage() {
               <p className="text-green-700 font-semibold text-sm flex items-center gap-2">
                 <CheckCircle className="h-4 w-4" /> Listing published successfully on eBay!
               </p>
+              {publishedListing.promotion?.sync_error && (
+                <p className="text-xs text-amber-700 flex items-start gap-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  The listing is live, but the ad could not be switched on: {publishedListing.promotion.sync_error}
+                </p>
+              )}
               <div className="flex items-center gap-3 flex-wrap">
                 {(publishedListing as { listing_url?: string }).listing_url && (
                   <a href={(publishedListing as { listing_url?: string }).listing_url} target="_blank" rel="noopener noreferrer"

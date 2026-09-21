@@ -12,6 +12,7 @@ class ListingService
     public function __construct(
         private readonly ListingRepository $repo,
         private readonly ?EbayClientInterface $ebayClient = null,
+        private readonly ?PromotionService $promotions = null,
     ) {}
 
     public function list(array $filters = [], int $page = 1, int $limit = 25): array
@@ -45,6 +46,9 @@ class ListingService
             'item_specifics'      => $data['item_specifics'] ?? [],
             'shipping'            => $data['shipping'] ?? [],
             'source_url'          => $data['source_url'] ?? '',
+            // Off unless the create form asked for it. After creation PromotionService
+            // is the only thing that writes to this key.
+            'promotion'           => PromotionService::seedState($data['promotion'] ?? null),
             'listing_url'         => '',
             'listed_at'           => '',
             'ends_at'             => '',
@@ -120,6 +124,11 @@ class ListingService
             'listing_url'  => $ebayItemId ? "https://www.{$domain}/itm/{$ebayItemId}" : '',
             'published_at' => date('c'),
         ]);
+
+        // The listing is live now, so a "promote on publish" choice can finally be acted on.
+        if ($this->promotions !== null) {
+            $updated['promotion'] = $this->promotions->applyOnPublish($updated);
+        }
 
         return $this->repo->save($updated);
     }

@@ -12,6 +12,7 @@ import type {
   MonitorItem,
   CompetitorCheck,
   HealthScore,
+  ListingPromotion,
   FeedbackType,
   FeedbackTone,
   PriceSuggestion,
@@ -185,6 +186,15 @@ export const listings = {
 
   health: (id: string): Promise<ApiResponse<HealthScore>> =>
     apiFetch(`/api/listings/${id}/health`),
+
+  getPromotion: (id: string): Promise<ApiResponse<ListingPromotion>> =>
+    apiFetch(`/api/listings/${id}/promotion`),
+
+  setPromotion: (
+    id: string,
+    data: { enabled: boolean; ad_rate?: string },
+  ): Promise<ApiResponse<ListingPromotion>> =>
+    apiFetch(`/api/listings/${id}/promotion`, { method: 'PUT', body: JSON.stringify(data) }),
 };
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────

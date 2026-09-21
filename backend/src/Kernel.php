@@ -31,8 +31,10 @@ use App\Services\OrderService;
 use App\Services\PriceMonitorService;
 use App\Services\ProductScraperService;
 use App\Services\ProfileService;
+use App\Services\PromotionService;
 use App\Services\SalesReportService;
 use App\Services\UserAuthService;
+use App\Storage\Json\CampaignRepository;
 use App\Storage\Json\ListingRepository;
 use App\Storage\Json\OrderRepository;
 use App\Storage\Json\ProfileRepository;
@@ -61,6 +63,7 @@ class Kernel
         $userRepo      = new UserRepository($this->dataDir);
         $sessionRepo   = new SessionRepository($this->dataDir);
         $profileRepo   = new ProfileRepository($this->dataDir);
+        $campaignRepo  = new CampaignRepository($this->dataDir);
 
         // ── eBay client (allow injection for testing / mocking) ───────────────
         $ebayClient = $this->ebayClientOverride ?? new EbayClient($tokenRepo);
@@ -71,7 +74,8 @@ class Kernel
         $ebayAuthService      = new EbayAuthService($tokenRepo, $ebayClient);
         $ebaySyncService      = new EbaySyncService($ebayClient, $orderRepo, $listingRepo, $tokenRepo, $this->dataDir);
         $orderService         = new OrderService($orderRepo);
-        $listingService       = new ListingService($listingRepo, $ebayClient);
+        $promotionService     = new PromotionService($listingRepo, $campaignRepo, $ebayClient);
+        $listingService       = new ListingService($listingRepo, $ebayClient, $promotionService);
         $analyticsService     = new AnalyticsService($orderRepo, $listingRepo);
         $invoicePdf           = new InvoicePdf($this->templateDir);
         $salesReportPdf       = new SalesReportPdf($this->templateDir);
@@ -89,7 +93,7 @@ class Kernel
         $profileController   = new ProfileController($userAuthService, $profileService);
         $authController      = new AuthController($ebayAuthService);
         $orderController     = new OrderController($orderService, $invoiceService, $fulfillmentService);
-        $listingController   = new ListingController($listingService, $competitorService, $healthService);
+        $listingController   = new ListingController($listingService, $competitorService, $healthService, $promotionService);
         $dashboardController = new DashboardController($analyticsService);
         $reportController    = new ReportController($salesReportService);
         $syncController      = new SyncController($ebaySyncService);
@@ -137,6 +141,8 @@ class Kernel
         $this->router->delete('/api/listings/{id}',              [$listingController, 'destroy']);
         $this->router->post('/api/listings/{id}/publish',           [$listingController, 'publish']);
         $this->router->post('/api/listings/{id}/revise',            [$listingController, 'revise']);
+        $this->router->get('/api/listings/{id}/promotion',          [$listingController, 'promotion']);
+        $this->router->put('/api/listings/{id}/promotion',          [$listingController, 'setPromotion']);
         $this->router->post('/api/listings/{id}/check-competitors', [$listingController, 'checkCompetitors']);
         $this->router->post('/api/listings/check-all-competitors',  [$listingController, 'checkAllCompetitors']);
 

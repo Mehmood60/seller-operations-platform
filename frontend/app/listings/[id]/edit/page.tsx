@@ -12,7 +12,8 @@ import { ai as aiApi, listings as listingsApi } from '@/lib/api';
 import { extractMissingFields, hasMissingFieldError } from '@/lib/ebayErrors';
 import { fileToListingImage } from '@/lib/images';
 import { RichTextEditor } from '@/components/RichTextEditor';
-import type { AiShipping, HealthScore, ShippingOrigin } from '@/types';
+import { PromotedListing, DEFAULT_PROMOTION, type PromotionChoice } from '@/components/PromotedListing';
+import type { AiShipping, HealthScore, ListingPromotion, ShippingOrigin } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -114,7 +115,7 @@ export default function EditListingPage() {
   // publish
   const [publishing, setPublishing]             = useState(false);
   const [publishError, setPublishError]         = useState<string | null>(null);
-  const [publishedListing, setPublishedListing] = useState<{ listing_url?: string } | null>(null);
+  const [publishedListing, setPublishedListing] = useState<{ listing_url?: string; promotion?: ListingPromotion } | null>(null);
   const [solvingAI, setSolvingAI]               = useState(false);
   const [aiSolveError, setAiSolveError]         = useState<string | null>(null);
   const [fixingHealthIssue, setFixingHealthIssue] = useState<string | null>(null);
@@ -129,6 +130,9 @@ export default function EditListingPage() {
   const [catSuggestions, setCatSuggestions]     = useState<CategorySuggestion[]>([]);
   const [showCatDrop, setShowCatDrop]           = useState(false);
   const [catSearchError, setCatSearchError]     = useState<string | null>(null);
+
+  // Promoted Listings — the card owns the eBay round trip, this is just the mirror of it.
+  const [promotion, setPromotion]       = useState<PromotionChoice>(DEFAULT_PROMOTION);
 
   // image upload
   const [uploadError, setUploadError]   = useState<string | null>(null);
@@ -1366,6 +1370,14 @@ export default function EditListingPage() {
           </div>
         </div>
 
+        {/* Advertising */}
+        <PromotedListing
+          listingId={id}
+          value={promotion}
+          onChange={setPromotion}
+          priceValue={form.price}
+        />
+
         {/* Actions */}
         <div className="space-y-3 pt-4 border-t border-gray-100">
 
@@ -1443,6 +1455,12 @@ export default function EditListingPage() {
                   <p className="text-green-700 font-semibold text-sm flex items-center gap-2">
                     <CheckCircle className="h-4 w-4" /> Listing published successfully on eBay!
                   </p>
+                  {publishedListing.promotion?.sync_error && (
+                    <p className="text-xs text-amber-700 flex items-start gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                      The listing is live, but the ad could not be switched on: {publishedListing.promotion.sync_error}
+                    </p>
+                  )}
                   <div className="flex items-center gap-3 flex-wrap">
                     {publishedListing.listing_url && (
                       <a href={publishedListing.listing_url} target="_blank" rel="noopener noreferrer"

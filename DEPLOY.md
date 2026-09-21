@@ -77,10 +77,15 @@ Docker rebuilds only what changed and restarts the containers. Takes ~5–15 min
   ```bash
   docker compose -f docker-compose.prod.yml up -d --build backend
   ```
-- **Changed a value in `backend/.env`** (eBay key, Groq key, etc.) → no rebuild needed,
-  just restart the backend:
+- **Changed a value in `backend/.env`** (eBay key, Groq key, scopes, etc.) → no rebuild
+  needed, but the container must be **recreated**, not restarted. `restart` reuses the
+  existing container, and env vars are fixed when a container is created — so the old
+  value survives a restart. Use `up -d`, which recreates the service when its config
+  (including `env_file` contents) has changed:
   ```bash
-  docker compose -f docker-compose.prod.yml restart backend
+  docker compose -f docker-compose.prod.yml up -d backend
+  # confirm the running container actually took it:
+  docker compose -f docker-compose.prod.yml exec backend printenv EBAY_SCOPES
   ```
 - **Changed the domain, `API_KEY`, or anything `NEXT_PUBLIC_*`** → the frontend bakes these
   at build time, so you **must** rebuild the frontend:
