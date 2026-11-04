@@ -716,6 +716,10 @@ XML;
 
         return $this->sendPictureUpload([
             'headers'   => $headers,
+            // Guzzle adds "Expect: 100-Continue" to any body over 1 MB, and eBay's
+            // Trading gateway answers that handshake with "404 Resource not found"
+            // — so every full-size photo failed while small ones went through.
+            'expect'    => false,
             'multipart' => [
                 [
                     'name'     => 'XML Payload',

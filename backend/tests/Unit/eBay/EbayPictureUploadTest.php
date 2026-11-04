@@ -197,7 +197,8 @@ class EbayPictureUploadTest extends TestCase
     {
         $sent  = [];
         $stack = HandlerStack::create(new MockHandler($responses));
-        $stack->push(Middleware::history($sent));
+        // Recorded after prepare_body so headers Guzzle adds on the way out are visible.
+        $stack->after('prepare_body', Middleware::history($sent));
 
         $tokens = $this->createMock(TokenRepository::class);
         $tokens->method('getTokens')->willReturn([
@@ -250,6 +251,18 @@ class EbayPictureUploadTest extends TestCase
         $this->assertGreaterThan($xmlPart, $imagePart);
         $this->assertStringContainsString('filename="image_1.png"', $body);
         $this->assertStringContainsString($this->pngBytes(), $body);
+    }
+
+    public function testLargePictureIsSentWithoutExpectContinue(): void
+    {
+        // eBay answers "Expect: 100-Continue" with 404 Resource not found.
+        $this->primeClient([new Response(200, [], $this->successXml())]);
+
+        // A valid PNG padded past Guzzle's 1 MB Expect threshold.
+        $big = $this->pngBytes() . str_repeat("\0", 2 * 1024 * 1024);
+        $this->client->uploadPicture(base64_encode($big), 'image_1');
+
+        $this->assertFalse($this->request(0)->hasHeader('Expect'));
     }
 
     public function testReportsEbayFailureWithLongMessage(): void
