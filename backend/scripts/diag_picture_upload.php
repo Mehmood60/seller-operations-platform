@@ -76,3 +76,10 @@ $show('UploadSiteHostedPictures multipart', $http->post($url, [
         ['name' => 'image', 'filename' => 'diag.png', 'headers' => ['Content-Type' => 'image/png'], 'contents' => $png],
     ],
 ]));
+
+// 5. The replacement: Commerce Media API (needs the sell.inventory scope).
+$media = $sandbox ? 'https://apim.sandbox.ebay.com/commerce/media/v1_beta' : 'https://apim.ebay.com/commerce/media/v1_beta';
+$show('Media API create_image_from_url', $http->post($media . '/image/create_image_from_url', [
+    'headers' => ['Authorization' => 'Bearer ' . $token, 'Accept' => 'application/json'],
+    'json'    => ['imageUrl' => 'https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png'],
+]));

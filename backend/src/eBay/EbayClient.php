@@ -462,7 +462,7 @@ XML;
      * an explicit hint appended — the fix (re-running OAuth consent) is not something
      * eBay's own wording makes obvious.
      */
-    private function describeSellError(array $data, int $status, string $raw): string
+    private function describeSellError(array $data, int $status, string $raw, string $scope = 'sell.marketing'): string
     {
         $parts = [];
         foreach ($data['errors'] ?? [] as $err) {
@@ -479,7 +479,7 @@ XML;
             : 'HTTP ' . $status . ($raw !== '' ? ': ' . mb_substr($raw, 0, 300) : '');
 
         if (($status === 403 || $status === 401) && stripos($text, 'scope') !== false) {
-            $text .= ' — reconnect your eBay account so the sell.marketing scope is granted.';
+            $text .= ' — reconnect your eBay account so the ' . $scope . ' scope is granted.';
         }
 
         return $text;
@@ -672,9 +672,14 @@ XML;
         return $host === 'ebayimg.com' || str_ends_with($host, '.ebayimg.com');
     }
 
-    // ── UploadSiteHostedPictures ──────────────────────────────────────────────
+    // ── Picture upload (Media API) ────────────────────────────────────────────
+    //
+    // eBay decommissioned the Trading API's UploadSiteHostedPictures on
+    // 2026-09-30 — every call now answers "404 Resource not found". Its
+    // replacement is the Commerce Media API, which returns the same kind of
+    // EPS (i.ebayimg.com) URL, so listings keep using pictures exactly as before.
 
-    /** Image formats eBay Picture Services accepts, keyed by detected MIME type. */
+    /** Image formats EPS hosts, keyed by detected MIME type. */
     private const EPS_FORMATS = [
         'image/jpeg'     => 'jpg',
         'image/pjpeg'    => 'jpg',
@@ -692,44 +697,32 @@ XML;
     private const IMAGE_FETCH_USER_AGENT =
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+    private function mediaUrl(): string
+    {
+        return $this->sandbox
+            ? 'https://apim.sandbox.ebay.com/commerce/media/v1_beta'
+            : 'https://apim.ebay.com/commerce/media/v1_beta';
+    }
+
     public function uploadPicture(string $base64Data, string $name = 'image'): string
     {
         return $this->uploadBinaryPicture($this->decodeImageData($base64Data), $name);
     }
 
-    /** Send raw image bytes to EPS as the binary MIME attachment it expects. */
+    /** Send raw image bytes to EPS as a multipart file upload. */
     private function uploadBinaryPicture(string $binary, string $name): string
     {
-        $mime     = $this->detectImageMime($binary);
-        $safeName = $this->pictureName($name);
+        $mime = $this->detectImageMime($binary);
 
-        // EPS wants the picture as a binary MIME attachment that follows the XML
-        // part in the same POST — <PictureData> is only a reference to that
-        // attachment, never the bytes. Inlining base64 there makes eBay read the
-        // text as image headers and answer "file contains corrupt image data".
-        $xml = $this->pictureUploadXml($safeName);
-
-        // Guzzle sets its own multipart Content-Type (with the boundary); leaving
-        // the text/xml header in place would make eBay parse the body as one blob.
-        $headers = $this->tradingHeaders('UploadSiteHostedPictures');
-        unset($headers['Content-Type']);
-
-        return $this->sendPictureUpload([
-            'headers'   => $headers,
-            // Guzzle adds "Expect: 100-Continue" to any body over 1 MB, and eBay's
-            // Trading gateway answers that handshake with "404 Resource not found"
-            // — so every full-size photo failed while small ones went through.
+        return $this->sendPictureUpload('/image/create_image_from_file', [
+            // Guzzle adds "Expect: 100-Continue" to any body over 1 MB, which
+            // eBay's gateway does not answer reliably.
             'expect'    => false,
             'multipart' => [
                 [
-                    'name'     => 'XML Payload',
-                    'contents' => $xml,
-                    'headers'  => ['Content-Type' => 'text/xml; charset=utf-8'],
-                ],
-                [
                     'name'     => 'image',
                     'contents' => $binary,
-                    'filename' => $safeName . '.' . self::EPS_FORMATS[$mime],
+                    'filename' => $this->pictureName($name) . '.' . self::EPS_FORMATS[$mime],
                     'headers'  => ['Content-Type' => $mime],
                 ],
             ],
@@ -739,19 +732,15 @@ XML;
     /**
      * Copy a picture that lives on someone else's server into EPS.
      *
-     * eBay fetches the URL itself (ExternalPictureURL). Hosts that refuse its
-     * fetcher — Amazon above all — are downloaded here and sent as bytes, so a
-     * pasted link ends up as an eBay-hosted picture either way.
+     * eBay fetches the URL itself. Hosts that refuse its fetcher — Amazon above
+     * all — are downloaded here and sent as bytes, so a pasted link ends up as an
+     * eBay-hosted picture either way.
      */
     public function uploadPictureFromUrl(string $url, string $name = 'image'): string
     {
-        $safeName = $this->pictureName($name);
-        $xml      = $this->pictureUploadXml($safeName, $url);
-
         try {
-            return $this->sendPictureUpload([
-                'headers' => $this->tradingHeaders('UploadSiteHostedPictures'),
-                'body'    => $xml,
+            return $this->sendPictureUpload('/image/create_image_from_url', [
+                'json' => ['imageUrl' => $url],
             ]);
         } catch (\RuntimeException $e) {
             $binary = $this->downloadImage($url);
@@ -766,52 +755,57 @@ XML;
         }
     }
 
-    /** UploadSiteHostedPictures payload — with a URL for eBay to fetch, or without for an attachment. */
-    private function pictureUploadXml(string $safeName, ?string $externalUrl = null): string
-    {
-        $token    = $this->getValidAccessToken();
-        $external = $externalUrl !== null
-            ? '  <ExternalPictureURL>' . htmlspecialchars($externalUrl, ENT_XML1) . "</ExternalPictureURL>\n"
-            : '';
-
-        return <<<XML
-<?xml version="1.0" encoding="utf-8"?>
-<UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
-  <RequesterCredentials><eBayAuthToken>{$token}</eBayAuthToken></RequesterCredentials>
-  <PictureName>{$safeName}</PictureName>
-  <PictureSet>Standard</PictureSet>
-{$external}</UploadSiteHostedPicturesRequest>
-XML;
-    }
-
+    /** A file name safe to send to eBay: letters, digits, dash and underscore only. */
     private function pictureName(string $name): string
     {
-        return htmlspecialchars(mb_substr($name, 0, 80), ENT_XML1);
+        $safe = preg_replace('/[^A-Za-z0-9_-]+/', '_', mb_substr($name, 0, 80)) ?? '';
+        return $safe !== '' ? $safe : 'image';
     }
 
-    /** Run an UploadSiteHostedPictures request and return the hosted picture URL. */
-    private function sendPictureUpload(array $options): string
+    /**
+     * Run a Media API image upload and return the hosted picture URL.
+     *
+     * The URL normally comes back in the 201 body; when it does not, the image
+     * resource named in the Location header is fetched for it.
+     */
+    private function sendPictureUpload(string $endpoint, array $options): string
     {
+        $auth = [
+            'Authorization' => 'Bearer ' . $this->getValidAccessToken(),
+            'Accept'        => 'application/json',
+        ];
+        $options['headers']     = $auth;
+        $options['http_errors'] = false;
+
         try {
-            $response = $this->http->post($this->tradingUrl(), $options);
+            $response = $this->http->post($this->mediaUrl() . $endpoint, $options);
         } catch (GuzzleException $e) {
             throw new \RuntimeException('Failed to upload picture: ' . $e->getMessage(), 0, $e);
         }
 
-        $xmlResp = @simplexml_load_string((string)$response->getBody());
-        if ($xmlResp === false) {
-            throw new \RuntimeException('Invalid response from eBay picture upload.');
+        $status = $response->getStatusCode();
+        $raw    = (string)$response->getBody();
+        $data   = json_decode($raw, true);
+        $data   = is_array($data) ? $data : [];
+
+        if ($status >= 400) {
+            throw new \RuntimeException(
+                'eBay picture upload failed: ' . $this->describeSellError($data, $status, $raw, 'sell.inventory')
+            );
         }
 
-        $ack = strtolower((string)($xmlResp->Ack ?? ''));
-        if ($ack === 'failure') {
-            $short = trim(strip_tags((string)($xmlResp->Errors->ShortMessage ?? '')));
-            $long  = trim(strip_tags((string)($xmlResp->Errors->LongMessage  ?? '')));
-            $msg   = $long !== '' && $long !== $short ? $short . ' — ' . $long : $short;
-            throw new \RuntimeException('eBay picture upload failed: ' . ($msg ?: 'Unknown upload error'));
+        $url      = (string)($data['imageUrl'] ?? '');
+        $location = $response->getHeaderLine('Location');
+        if ($url === '' && $location !== '') {
+            try {
+                $image = $this->http->get($location, ['headers' => $auth, 'http_errors' => false]);
+                $body  = json_decode((string)$image->getBody(), true);
+                $url   = is_array($body) ? (string)($body['imageUrl'] ?? '') : '';
+            } catch (GuzzleException) {
+                $url = '';
+            }
         }
 
-        $url = (string)($xmlResp->SiteHostedPictureDetails->FullURL ?? '');
         if ($url === '') {
             throw new \RuntimeException('No URL returned from eBay picture upload.');
         }

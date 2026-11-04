@@ -17,11 +17,13 @@ use ReflectionClass;
 
 /**
  * Covers the picture handling behind two eBay rejections:
- *   "File contains corrupt image data"  — EPS wants raw bytes as a MIME
- *   attachment, so a data: URL has to decode to a format eBay hosts.
+ *   "File contains corrupt image data"  — a data: URL has to decode to the
+ *   raw bytes of a format eBay hosts.
  *   code 20004, "A mixture of Self Hosted and EPS pictures are not allowed"
  *   — every picture in a listing has to end up on eBay's own servers, whether
  *   the seller uploaded a file or pasted a link.
+ * Uploads go through the Media API; the Trading API's UploadSiteHostedPictures
+ * was decommissioned and answers 404.
  */
 class EbayPictureUploadTest extends TestCase
 {
@@ -169,27 +171,24 @@ class EbayPictureUploadTest extends TestCase
 
     // ── Canned eBay responses ────────────────────────────────────────────────
 
-    private function successXml(string $fullUrl = 'https://i.ebayimg.com/00/s/test.jpg'): string
+    private function success(string $imageUrl = 'https://i.ebayimg.com/00/s/test.jpg'): Response
     {
-        return '<?xml version="1.0" encoding="UTF-8"?>'
-            . '<UploadSiteHostedPicturesResponse xmlns="urn:ebay:apis:eBLBaseComponents">'
-            . '<Ack>Success</Ack><SiteHostedPictureDetails>'
-            . '<FullURL>' . $fullUrl . '</FullURL>'
-            . '</SiteHostedPictureDetails></UploadSiteHostedPicturesResponse>';
+        return new Response(201, ['Content-Type' => 'application/json'], json_encode([
+            'imageUrl'       => $imageUrl,
+            'expirationDate' => '2026-12-04T00:00:00.000Z',
+        ]));
     }
 
-    private function failureXml(string $longMessage): string
+    private function failure(string $message, int $status = 400): Response
     {
-        return '<?xml version="1.0" encoding="UTF-8"?>'
-            . '<UploadSiteHostedPicturesResponse xmlns="urn:ebay:apis:eBLBaseComponents">'
-            . '<Ack>Failure</Ack><Errors><ShortMessage>Upload failed.</ShortMessage>'
-            . '<LongMessage>' . $longMessage . '</LongMessage></Errors>'
-            . '</UploadSiteHostedPicturesResponse>';
+        return new Response($status, ['Content-Type' => 'application/json'], json_encode([
+            'errors' => [['errorId' => 190002, 'message' => $message, 'longMessage' => $message]],
+        ]));
     }
 
-    private function cannotDownloadXml(): string
+    private function cannotDownload(): Response
     {
-        return $this->failureXml('The specified picture URL could not be downloaded.');
+        return $this->failure('The image at the given URL could not be downloaded.');
     }
 
     /** Wire the client to a queue of canned responses and record what it sends. */
@@ -227,9 +226,9 @@ class EbayPictureUploadTest extends TestCase
 
     // ── Request format ───────────────────────────────────────────────────────
 
-    public function testSendsPictureAsBinaryMimeAttachment(): void
+    public function testSendsPictureToMediaApiAsMultipartFile(): void
     {
-        $this->primeClient([new Response(200, [], $this->successXml())]);
+        $this->primeClient([$this->success()]);
 
         $url = $this->client->uploadPicture(base64_encode($this->pngBytes()), 'image_1');
         $this->assertSame('https://i.ebayimg.com/00/s/test.jpg', $url);
@@ -237,26 +236,33 @@ class EbayPictureUploadTest extends TestCase
         $request = $this->request(0);
         $body    = (string)$request->getBody();
 
+        // The retired Trading call (UploadSiteHostedPictures) now answers 404.
+        $this->assertSame('apim.sandbox.ebay.com', $request->getUri()->getHost());
+        $this->assertSame('/commerce/media/v1_beta/image/create_image_from_file', $request->getUri()->getPath());
+        $this->assertSame('Bearer test-token', $request->getHeaderLine('Authorization'));
         $this->assertStringStartsWith('multipart/form-data', $request->getHeaderLine('Content-Type'));
-        $this->assertSame('UploadSiteHostedPictures', $request->getHeaderLine('X-EBAY-API-CALL-NAME'));
 
-        // The XML part must come first and carry no inline picture data...
-        $xmlPart = strpos($body, 'name="XML Payload"');
-        $this->assertNotFalse($xmlPart);
-        $this->assertStringNotContainsString('<PictureData>', $body);
-
-        // ...followed by the untouched image bytes as their own part.
-        $imagePart = strpos($body, 'name="image"');
-        $this->assertNotFalse($imagePart);
-        $this->assertGreaterThan($xmlPart, $imagePart);
+        $this->assertStringContainsString('name="image"', $body);
         $this->assertStringContainsString('filename="image_1.png"', $body);
         $this->assertStringContainsString($this->pngBytes(), $body);
     }
 
+    public function testFollowsLocationWhenUrlIsNotInTheBody(): void
+    {
+        $this->primeClient([
+            new Response(201, ['Location' => 'https://apim.sandbox.ebay.com/commerce/media/v1_beta/image/abc'], ''),
+            new Response(200, [], json_encode(['imageUrl' => 'https://i.ebayimg.com/00/s/abc.jpg'])),
+        ]);
+
+        $url = $this->client->uploadPicture(base64_encode($this->pngBytes()), 'image_1');
+
+        $this->assertSame('https://i.ebayimg.com/00/s/abc.jpg', $url);
+        $this->assertSame('/commerce/media/v1_beta/image/abc', $this->request(1)->getUri()->getPath());
+    }
+
     public function testLargePictureIsSentWithoutExpectContinue(): void
     {
-        // eBay answers "Expect: 100-Continue" with 404 Resource not found.
-        $this->primeClient([new Response(200, [], $this->successXml())]);
+        $this->primeClient([$this->success()]);
 
         // A valid PNG padded past Guzzle's 1 MB Expect threshold.
         $big = $this->pngBytes() . str_repeat("\0", 2 * 1024 * 1024);
@@ -267,7 +273,7 @@ class EbayPictureUploadTest extends TestCase
 
     public function testReportsEbayFailureWithLongMessage(): void
     {
-        $this->primeClient([new Response(200, [], $this->failureXml('File contains corrupt image data.'))]);
+        $this->primeClient([$this->failure('File contains corrupt image data.')]);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessageMatches('/corrupt image data/');
@@ -279,24 +285,25 @@ class EbayPictureUploadTest extends TestCase
 
     public function testAsksEbayToFetchAPastedLinkItself(): void
     {
-        $this->primeClient([new Response(200, [], $this->successXml('https://i.ebayimg.com/00/s/url.jpg'))]);
+        $this->primeClient([$this->success('https://i.ebayimg.com/00/s/url.jpg')]);
 
         $url = $this->client->uploadPictureFromUrl('https://m.media-amazon.com/images/I/x.jpg', 'image_2');
         $this->assertSame('https://i.ebayimg.com/00/s/url.jpg', $url);
 
-        $body = (string)$this->request(0)->getBody();
-        $this->assertStringContainsString(
-            '<ExternalPictureURL>https://m.media-amazon.com/images/I/x.jpg</ExternalPictureURL>',
-            $body
+        $request = $this->request(0);
+        $this->assertSame('/commerce/media/v1_beta/image/create_image_from_url', $request->getUri()->getPath());
+        $this->assertSame(
+            ['imageUrl' => 'https://m.media-amazon.com/images/I/x.jpg'],
+            json_decode((string)$request->getBody(), true)
         );
     }
 
     public function testDownloadsThePictureItselfWhenEbayCannotFetchIt(): void
     {
         $this->primeClient([
-            new Response(200, [], $this->cannotDownloadXml()),
+            $this->cannotDownload(),
             new Response(200, ['Content-Type' => 'image/png'], $this->pngBytes()),
-            new Response(200, [], $this->successXml('https://i.ebayimg.com/00/s/copied.jpg')),
+            $this->success('https://i.ebayimg.com/00/s/copied.jpg'),
         ]);
 
         $url = $this->client->uploadPictureFromUrl('https://m.media-amazon.com/images/I/x.jpg', 'image_2');
@@ -310,7 +317,7 @@ class EbayPictureUploadTest extends TestCase
     public function testNamesTheUnreachableUrlWhenNobodyCanFetchIt(): void
     {
         $this->primeClient([
-            new Response(200, [], $this->cannotDownloadXml()),
+            $this->cannotDownload(),
             new Response(403, [], 'Forbidden'),
         ]);
 
@@ -325,7 +332,7 @@ class EbayPictureUploadTest extends TestCase
     {
         // eBay declines, and the fallback must not turn the seller's URL into a
         // request against localhost or the VM's metadata service.
-        $this->primeClient([new Response(200, [], $this->cannotDownloadXml())]);
+        $this->primeClient([$this->cannotDownload()]);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessageMatches('/upload the file instead/');
@@ -355,8 +362,8 @@ class EbayPictureUploadTest extends TestCase
     public function testUploadedFilesAndPastedLinksBothBecomeEbayHostedPictures(): void
     {
         $this->primeClient([
-            new Response(200, [], $this->successXml('https://i.ebayimg.com/00/s/from-file.jpg')),
-            new Response(200, [], $this->successXml('https://i.ebayimg.com/00/s/from-link.jpg')),
+            $this->success('https://i.ebayimg.com/00/s/from-file.jpg'),
+            $this->success('https://i.ebayimg.com/00/s/from-link.jpg'),
         ]);
 
         $resolved = $this->call('resolvePictureUrls', [
