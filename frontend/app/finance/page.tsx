@@ -374,7 +374,10 @@ export default function FinancePage() {
                           </td>
                           <td className="py-2 text-right whitespace-nowrap font-semibold">
                             {formatAmount(r.net)}
-                            {r.source !== 'finances' && (
+                            {r.source === 'manual' && (
+                              <span className="ml-1 text-[10px] uppercase tracking-wide text-blue-600 font-medium">edited</span>
+                            )}
+                            {(r.source === 'order' || r.source === 'unknown') && (
                               <span className="text-gray-400 font-normal" title={r.source === 'order' ? 'Estimate — ad fees not included' : 'No fee data yet'}> ≈</span>
                             )}
                           </td>

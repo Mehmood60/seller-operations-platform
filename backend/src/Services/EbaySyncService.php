@@ -81,6 +81,9 @@ class EbaySyncService
                         $mapped['fulfillment'] = $existing['fulfillment'];
                     }
                     $mapped['notes'] = $existing['notes'] ?? $mapped['notes'];
+                    if (!empty($existing['earnings_override'])) {
+                        $mapped['earnings_override'] = $existing['earnings_override'];
+                    }
                     foreach (['tracking_number', 'carrier', 'shipped_at'] as $field) {
                         if (empty($mapped['shipping'][$field]) && !empty($existing['shipping'][$field])) {
                             $mapped['shipping'][$field] = $existing['shipping'][$field];

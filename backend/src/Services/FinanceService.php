@@ -34,7 +34,7 @@ class FinanceService
     public function summary(string $from, string $to): array
     {
         $orders = ['count' => 0, 'gross' => 0.0, 'fees' => 0.0, 'refunds' => 0.0, 'net' => 0.0,
-                   'exact' => 0, 'estimated' => 0, 'unknown' => 0];
+                   'exact' => 0, 'manual' => 0, 'estimated' => 0, 'unknown' => 0];
         $rows   = [];
 
         foreach ($this->orderRepo->findByDateRange($from, $to) as $order) {
@@ -46,17 +46,28 @@ class FinanceService
                 continue;
             }
 
-            $gross = (float)($e['gross'] ?? $order['totals']['grand_total']['value'] ?? 0);
-            $fees  = (float)($e['total_fees'] ?? 0);
+            $gross   = (float)($e['gross'] ?? $order['totals']['grand_total']['value'] ?? 0);
+            $fees    = (float)($e['total_fees'] ?? 0);
+            $refunds = (float)($e['refunds'] ?? 0);
             // Without any fee data the sale price is the best available figure.
-            $net   = isset($e['net']) ? (float)$e['net'] : $gross;
+            $net     = isset($e['net']) ? (float)$e['net'] : $gross;
+
+            // The seller's own correction wins; the difference is shown as fees.
+            if (!empty($order['earnings_override']['net'])) {
+                $net     = (float)$order['earnings_override']['net'];
+                $fees    = $gross - $net;
+                $refunds = 0.0;
+                $source  = 'manual';
+            }
 
             $orders['count']++;
             $orders['gross']   += $gross;
             $orders['fees']    += $fees;
-            $orders['refunds'] += (float)($e['refunds'] ?? 0);
+            $orders['refunds'] += $refunds;
             $orders['net']     += $net;
-            $orders[match ($source) { 'finances' => 'exact', 'order' => 'estimated', default => 'unknown' }]++;
+            $orders[match ($source) {
+                'finances' => 'exact', 'manual' => 'manual', 'order' => 'estimated', default => 'unknown',
+            }]++;
 
             $rows[] = [
                 'id'         => $order['id'],
@@ -93,6 +104,7 @@ class FinanceService
                 'refunds'         => self::amount($orders['refunds']),
                 'net'             => self::amount($orders['net']),
                 'exact_count'     => $orders['exact'],
+                'manual_count'    => $orders['manual'],
                 'estimated_count' => $orders['estimated'],
                 'unknown_count'   => $orders['unknown'],
             ],

@@ -4,7 +4,8 @@ import { Wallet } from 'lucide-react';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useFormatAmount } from '@/components/PreferencesProvider';
-import type { OrderEarnings } from '@/types';
+import { EarningsValue } from '@/components/EarningsValue';
+import type { Order, OrderEarnings } from '@/types';
 
 const SOURCE_NOTE: Record<OrderEarnings['source'], string> = {
   finances: 'Actual payout from eBay, including ad fees and refunds.',
@@ -13,8 +14,10 @@ const SOURCE_NOTE: Record<OrderEarnings['source'], string> = {
 };
 
 /** Seller Hub's "Ihr Verkaufserlös" panel: sale price, each fee, what you keep. */
-export function EarningsBreakdown({ earnings }: { earnings: OrderEarnings }) {
+export function EarningsBreakdown({ order, onChange }: { order: Order; onChange: (order: Order) => void }) {
   const formatAmount = useFormatAmount();
+  const earnings     = order.earnings as OrderEarnings;
+  const override     = order.earnings_override;
   const refunds      = parseFloat(earnings.refunds ?? '0');
 
   return (
@@ -22,9 +25,13 @@ export function EarningsBreakdown({ earnings }: { earnings: OrderEarnings }) {
       <CardHeader className="flex items-center gap-2">
         <Wallet className="h-4 w-4 text-[#0f3460]" />
         <h2 className="font-semibold text-sm">Your eBay Earnings</h2>
-        <Badge variant={earnings.source === 'finances' ? 'success' : 'warning'}>
-          {earnings.source === 'finances' ? 'Exact' : earnings.source === 'order' ? 'Estimate' : 'Pending'}
-        </Badge>
+        {override ? (
+          <Badge variant="info">Corrected by you</Badge>
+        ) : (
+          <Badge variant={earnings.source === 'finances' ? 'success' : 'warning'}>
+            {earnings.source === 'finances' ? 'Exact' : earnings.source === 'order' ? 'Estimate' : 'Pending'}
+          </Badge>
+        )}
         {earnings.on_hold && <Badge variant="info">Funds on hold</Badge>}
       </CardHeader>
       <CardBody className="text-sm space-y-2">
@@ -49,12 +56,14 @@ export function EarningsBreakdown({ earnings }: { earnings: OrderEarnings }) {
 
         <div className="flex justify-between border-t border-gray-100 pt-2">
           <span className="font-semibold">You receive</span>
-          <span className={`font-bold text-base ${earnings.net !== null && parseFloat(earnings.net) < 0 ? 'text-red-600' : 'text-green-700'}`}>
-            {formatAmount(earnings.net)}
-          </span>
+          <EarningsValue order={order} onChange={onChange} className="text-base" />
         </div>
 
-        <p className="text-xs text-gray-400 pt-1">{SOURCE_NOTE[earnings.source]}</p>
+        <p className="text-xs text-gray-400 pt-1">
+          {override
+            ? `You set this by hand. eBay's figure: ${formatAmount(earnings.net)}.`
+            : SOURCE_NOTE[earnings.source]}
+        </p>
       </CardBody>
     </Card>
   );

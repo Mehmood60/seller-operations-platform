@@ -83,6 +83,26 @@ class OrderController
         }
     }
 
+    // ── Manual correction of what eBay paid out ──────────────────────────────
+
+    public function setEarnings(array $params): void
+    {
+        $body = json_decode((string) file_get_contents('php://input'), true) ?? [];
+        $net  = isset($body['net']) && $body['net'] !== null ? (string)$body['net'] : null;
+
+        try {
+            $order = $this->orderService->setEarningsOverride($params['id'] ?? '', $net);
+        } catch (\InvalidArgumentException $e) {
+            Response::error($e->getMessage(), 422);
+            return;
+        }
+        if ($order === null) {
+            Response::error('Order not found.', 404);
+            return;
+        }
+        Response::json($order);
+    }
+
     // ── Tracking: push tracking number to eBay and mark shipped ──────────────
 
     public function track(array $params): void

@@ -152,7 +152,7 @@ export default function OrderDetailPage() {
         </Card>
       </div>
 
-      {order.earnings && <EarningsBreakdown earnings={order.earnings} />}
+      {order.earnings && <EarningsBreakdown order={order} onChange={setOrder} />}
 
       {/* Buyer + Payment */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

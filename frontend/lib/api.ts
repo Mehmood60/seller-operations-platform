@@ -120,6 +120,10 @@ export const orders = {
   invoiceUrl: (id: string): string =>
     `${API_BASE}/api/orders/${id}/invoice?key=${encodeURIComponent(API_KEY)}`,
 
+  /** Correct what eBay paid out for an order; null goes back to eBay's figure. */
+  setEarnings: (id: string, net: string | null): Promise<ApiResponse<Order>> =>
+    apiFetch(`/api/orders/${id}/earnings`, { method: 'PUT', body: JSON.stringify({ net }) }),
+
   fulfill: (
     id: string,
     aliexpressOrderId: string,

@@ -138,6 +138,7 @@ class Kernel
         $this->router->get('/api/orders/{id}/invoice',        [$orderController, 'invoice']);
         $this->router->post('/api/orders/{id}/fulfill',       [$orderController, 'fulfill']);
         $this->router->post('/api/orders/{id}/track',         [$orderController, 'track']);
+        $this->router->put('/api/orders/{id}/earnings',       [$orderController, 'setEarnings']);
 
         // Listings
         $this->router->get('/api/listings',                      [$listingController, 'index']);

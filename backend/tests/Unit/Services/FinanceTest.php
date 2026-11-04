@@ -224,6 +224,7 @@ class FinanceTest extends TestCase
         $client = $this->createMock(EbayClientInterface::class);
         $client->method('get')->willReturn(['orders' => [[
             'orderId'             => 'O1',
+            'creationDate'        => '2026-10-31T15:15:00.000Z',
             'pricingSummary'      => ['total' => ['value' => '13.50', 'currency' => 'EUR']],
             'totalMarketplaceFee' => ['value' => '2.79', 'currency' => 'EUR'],
         ]], 'total' => 1]);
@@ -272,6 +273,46 @@ class FinanceTest extends TestCase
         $this->assertSame('26.00', $s['expenses']['total']);
         // 27.73 − 0.35 − 26.00
         $this->assertSame('1.38', $s['profit']);
+    }
+
+    public function testManualCorrectionWinsAndSurvivesResync(): void
+    {
+        $this->orders->save($this->order('O1', '13.50', '2026-10-31T15:15:00.000Z', [
+            'earnings' => ['source' => 'order', 'gross' => '13.50', 'total_fees' => '2.79', 'net' => '10.71'],
+        ]));
+        $orderService = new \App\Services\OrderService($this->orders);
+        $orderService->setEarningsOverride('O1', '9,10');
+
+        $client = $this->createMock(EbayClientInterface::class);
+        $client->method('get')->willReturn(['orders' => [[
+            'orderId'             => 'O1',
+            'creationDate'        => '2026-10-31T15:15:00.000Z',
+            'pricingSummary'      => ['total' => ['value' => '13.50', 'currency' => 'EUR']],
+            'totalMarketplaceFee' => ['value' => '2.79', 'currency' => 'EUR'],
+        ]], 'total' => 1]);
+        $client->method('getFinanceTransactions')->willReturn(['transactions' => [], 'total' => 0]);
+        (new EbaySyncService($client, $this->orders, new ListingRepository($this->dir),
+            $this->createMock(TokenRepository::class), $this->dir))->syncOrders();
+
+        $this->assertSame('9.10', $this->orders->find('O1')['earnings_override']['net']);
+
+        $s = (new FinanceService($this->orders, new ExpenseRepository($this->dir), new EbayChargeRepository($this->dir)))
+            ->summary('2026-10-01', '2026-10-31');
+        $this->assertSame('9.10', $s['orders']['net']);
+        $this->assertSame('4.40', $s['orders']['fees']);
+        $this->assertSame(1, $s['orders']['manual_count']);
+        $this->assertSame('manual', $s['order_rows'][0]['source']);
+
+        // Clearing it brings back the synced figure.
+        $orderService->setEarningsOverride('O1', null);
+        $this->assertNull($this->orders->find('O1')['earnings_override']);
+    }
+
+    public function testRejectsUnreadableManualCorrection(): void
+    {
+        $this->orders->save($this->order('O1', '13.50'));
+        $this->expectException(\InvalidArgumentException::class);
+        (new \App\Services\OrderService($this->orders))->setEarningsOverride('O1', 'nine');
     }
 
     public function testRejectsInvalidExpenses(): void

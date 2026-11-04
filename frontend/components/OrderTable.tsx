@@ -1,9 +1,11 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { Order, OrderStatus } from '@/types';
 import { formatDate } from '@/lib/formatters';
-import { useFormatAmount, useFormatMoney } from '@/components/PreferencesProvider';
+import { useFormatMoney } from '@/components/PreferencesProvider';
+import { EarningsValue } from '@/components/EarningsValue';
 import { Badge } from '@/components/ui/Badge';
 
 const STATUS_VARIANT: Record<OrderStatus, 'success' | 'info' | 'default' | 'danger' | 'warning'> = {
@@ -18,10 +20,12 @@ interface OrderTableProps {
 }
 
 export function OrderTable({ orders }: OrderTableProps) {
-  const formatMoney  = useFormatMoney();
-  const formatAmount = useFormatAmount();
+  const formatMoney = useFormatMoney();
+  // Local copy so a corrected "You receive" shows without reloading the list.
+  const [rows, setRows] = useState(orders);
+  useEffect(() => setRows(orders), [orders]);
 
-  if (orders.length === 0) {
+  if (rows.length === 0) {
     return (
       <div className="text-center py-12 text-gray-400">
         No orders found.
@@ -45,7 +49,7 @@ export function OrderTable({ orders }: OrderTableProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50">
-          {orders.map((order) => (
+          {rows.map((order) => (
             <tr key={order.id} className="hover:bg-gray-50 transition-colors">
               <td className="py-3 pr-4 font-mono text-xs text-gray-600">
                 {order.id.slice(-10)}
@@ -59,18 +63,11 @@ export function OrderTable({ orders }: OrderTableProps) {
               <td className="py-3 pr-4 font-semibold">
                 {formatMoney(order.totals.grand_total)}
               </td>
-              <td className="py-3 pr-4">
-                {order.earnings?.net != null ? (
-                  <span
-                    className="font-semibold text-green-700"
-                    title={order.earnings.source === 'finances' ? 'Actual eBay payout' : 'Estimate — ad fees not included'}
-                  >
-                    {formatAmount(order.earnings.net)}
-                    {order.earnings.source !== 'finances' && <span className="text-gray-400 font-normal"> ≈</span>}
-                  </span>
-                ) : (
-                  <span className="text-gray-400">—</span>
-                )}
+              <td className="py-3 pr-4 whitespace-nowrap">
+                <EarningsValue
+                  order={order}
+                  onChange={(updated) => setRows((list) => list.map((o) => (o.id === updated.id ? updated : o)))}
+                />
               </td>
               <td className="py-3 pr-4">
                 <Badge variant={STATUS_VARIANT[order.status] ?? 'default'}>

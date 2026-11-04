@@ -82,6 +82,8 @@ export interface Order {
   synced_at: string;
   fulfillment?: Fulfillment;
   earnings?: OrderEarnings;
+  /** The seller's own correction of what eBay paid out; wins over earnings.net. */
+  earnings_override?: { net: string; updated_at: string } | null;
 }
 
 // ─── Earnings & finance ─────────────────────────────────────────────────────
@@ -144,7 +146,7 @@ export interface FinanceOrderRow {
   gross: string;
   total_fees: string;
   net: string;
-  source: EarningsSource;
+  source: EarningsSource | 'manual';
   on_hold: boolean;
 }
 
@@ -158,6 +160,7 @@ export interface FinanceSummary {
     refunds: string;
     net: string;
     exact_count: number;
+    manual_count: number;
     estimated_count: number;
     unknown_count: number;
   };
