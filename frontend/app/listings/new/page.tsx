@@ -100,7 +100,10 @@ export default function NewListingPage() {
   const [publishing, setPublishing]             = useState(false);
   const [publishError, setPublishError]         = useState<string | null>(null);
   const [publishedListing, setPublishedListing] = useState<{ listing_url?: string; promotion?: ListingPromotion } | null>(null);
-  const [solvingAI, setSolvingAI]               = useState(false);
+  // Draft created by the first publish attempt. A failed publish leaves it behind, so a
+  // retry (or Save Draft) updates it instead of piling up identical drafts.
+  const draftIdRef = useRef<string | null>(null);
+  const [solvingAI, setSolvingAI]             = useState(false);
   const [aiSolveError, setAiSolveError]         = useState<string | null>(null);
 
   // category search
@@ -189,6 +192,7 @@ export default function NewListingPage() {
     setPublishing(false);
     setPublishError(null);
     setPublishedListing(null);
+    draftIdRef.current = null;
     setSearchingCats(false);
     setCatSuggestions([]);
     setShowCatDrop(false);
@@ -352,12 +356,23 @@ export default function NewListingPage() {
 
   // ── Save draft ───────────────────────────────────────────────────────────
 
+  /** Create the draft on first save; afterwards update that same draft. */
+  const saveDraftOnce = async (data: Record<string, unknown>) => {
+    if (draftIdRef.current) {
+      const res = await listingsApi.updateDraft(draftIdRef.current, data);
+      return res.data.id;
+    }
+    const res = await listingsApi.createDraft(data);
+    draftIdRef.current = res.data.id;
+    return res.data.id;
+  };
+
   const handleSaveDraft = async () => {
     if (!canSave || saving) return;
     setSaving(true);
     setSaveError(null);
     try {
-      await listingsApi.createDraft({
+      await saveDraftOnce({
         title:          form.title,
         condition:      form.condition,
         description:    form.description,
@@ -430,7 +445,7 @@ export default function NewListingPage() {
     setPublishError(null);
     setPublishedListing(null);
     try {
-      const draftRes = await listingsApi.createDraft({
+      const draftId = await saveDraftOnce({
         title: form.title, condition: form.condition, description: form.description,
         price: form.price, quantity: form.quantity, sku: form.sku,
         category: form.category_suggestion, category_id: form.category_id,
@@ -443,7 +458,7 @@ export default function NewListingPage() {
           origin: form.shipping_origin,
         },
       });
-      const published = await listingsApi.publish(draftRes.data.id);
+      const published = await listingsApi.publish(draftId);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setPublishedListing(published.data as any);
     } catch (err: unknown) {
