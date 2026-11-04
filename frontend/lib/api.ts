@@ -16,6 +16,8 @@ import type {
   FeedbackType,
   FeedbackTone,
   PriceSuggestion,
+  Expense,
+  FinanceSummary,
 } from '@/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
@@ -212,6 +214,35 @@ export const reports = {
 
   salesPdfUrl: (from: string, to: string): string =>
     `${API_BASE}/api/reports/sales/pdf?from=${from}&to=${to}&key=${encodeURIComponent(API_KEY)}`,
+};
+
+// ─── Finance ─────────────────────────────────────────────────────────────────
+
+export interface ExpenseInput {
+  date: string;
+  amount: string;
+  category: string;
+  description: string;
+}
+
+export const finance = {
+  summary: (from: string, to: string): Promise<ApiResponse<FinanceSummary>> =>
+    apiFetch(`/api/finance/summary?from=${from}&to=${to}`),
+
+  categories: (): Promise<ApiResponse<Array<{ value: string; label: string }>>> =>
+    apiFetch('/api/finance/categories'),
+
+  expenses: (from: string, to: string): Promise<ApiResponse<Expense[]>> =>
+    apiFetch(`/api/expenses?from=${from}&to=${to}`),
+
+  createExpense: (data: ExpenseInput): Promise<ApiResponse<Expense>> =>
+    apiFetch('/api/expenses', { method: 'POST', body: JSON.stringify(data) }),
+
+  updateExpense: (id: string, data: ExpenseInput): Promise<ApiResponse<Expense>> =>
+    apiFetch(`/api/expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  deleteExpense: (id: string): Promise<ApiResponse<{ deleted: boolean }>> =>
+    apiFetch(`/api/expenses/${id}`, { method: 'DELETE' }),
 };
 
 // ─── User auth ───────────────────────────────────────────────────────────────

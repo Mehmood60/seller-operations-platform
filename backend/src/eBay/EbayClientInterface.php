@@ -108,4 +108,10 @@ interface EbayClientInterface
      * @return array{status:int, data:array, location:string, error:string}
      */
     public function sellRequest(string $method, string $path, ?array $body = null, array $query = []): array;
+
+    /**
+     * One page of Finances API transactions (sales, fees, refunds, ad charges).
+     * Needs the sell.finances scope; throws with eBay's message on failure.
+     */
+    public function getFinanceTransactions(array $query): array;
 }

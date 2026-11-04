@@ -7,6 +7,7 @@ namespace App;
 use App\Controllers\AiController;
 use App\Controllers\AuthController;
 use App\Controllers\DashboardController;
+use App\Controllers\FinanceController;
 use App\Controllers\ListingController;
 use App\Controllers\MonitorController;
 use App\Controllers\OrderController;
@@ -23,6 +24,7 @@ use App\Services\AnalyticsService;
 use App\Services\EbayCompetitorService;
 use App\Services\EbayAuthService;
 use App\Services\EbaySyncService;
+use App\Services\FinanceService;
 use App\Services\InvoiceService;
 use App\Services\ListingHealthService;
 use App\Services\ListingService;
@@ -37,6 +39,8 @@ use App\Services\UserAuthService;
 use App\Storage\Json\CampaignRepository;
 use App\Storage\Json\ListingRepository;
 use App\Storage\Json\OrderRepository;
+use App\Storage\Json\EbayChargeRepository;
+use App\Storage\Json\ExpenseRepository;
 use App\Storage\Json\ProfileRepository;
 use App\Storage\Json\SessionRepository;
 use App\Storage\Json\TokenRepository;
@@ -64,6 +68,8 @@ class Kernel
         $sessionRepo   = new SessionRepository($this->dataDir);
         $profileRepo   = new ProfileRepository($this->dataDir);
         $campaignRepo  = new CampaignRepository($this->dataDir);
+        $expenseRepo   = new ExpenseRepository($this->dataDir);
+        $chargeRepo    = new EbayChargeRepository($this->dataDir);
 
         // ── eBay client (allow injection for testing / mocking) ───────────────
         $ebayClient = $this->ebayClientOverride ?? new EbayClient($tokenRepo);
@@ -87,6 +93,7 @@ class Kernel
         $competitorService    = new EbayCompetitorService($listingRepo, $ebayClient);
         $fulfillmentService   = new OrderFulfillmentService($orderRepo, $ebayClient);
         $healthService        = new ListingHealthService();
+        $financeService       = new FinanceService($orderRepo, $expenseRepo, $chargeRepo);
 
         // ── Controllers ──────────────────────────────────────────────────────
         $userController      = new UserController($userAuthService, $profileService);
@@ -99,6 +106,7 @@ class Kernel
         $syncController      = new SyncController($ebaySyncService);
         $aiController        = new AiController($scraperService, $aiListingService);
         $monitorController   = new MonitorController($priceMonitorService);
+        $financeController   = new FinanceController($financeService);
 
         // ── Router ───────────────────────────────────────────────────────────
         $this->router = new Router();
@@ -163,6 +171,14 @@ class Kernel
 
         // Dashboard
         $this->router->get('/api/dashboard',             [$dashboardController, 'index']);
+
+        // Finance: earnings, expenses, profit
+        $this->router->get('/api/finance/summary',            [$financeController, 'summary']);
+        $this->router->get('/api/finance/categories',         [$financeController, 'categories']);
+        $this->router->get('/api/expenses',                   [$financeController, 'listExpenses']);
+        $this->router->post('/api/expenses',                  [$financeController, 'createExpense']);
+        $this->router->put('/api/expenses/{id}',              [$financeController, 'updateExpense']);
+        $this->router->delete('/api/expenses/{id}',           [$financeController, 'deleteExpense']);
 
         // Reports
         $this->router->get('/api/reports/sales',         [$reportController, 'salesData']);

@@ -7,6 +7,7 @@ namespace App\Services;
 use App\eBay\EbayClientInterface;
 use App\eBay\OrderMapper;
 use App\eBay\ListingMapper;
+use App\Storage\Json\EbayChargeRepository;
 use App\Storage\Json\OrderRepository;
 use App\Storage\Json\ListingRepository;
 use App\Storage\Json\TokenRepository;
@@ -14,6 +15,13 @@ use App\Storage\Json\TokenRepository;
 class EbaySyncService
 {
     private string $syncStateFile;
+    private EbayChargeRepository $chargeRepo;
+
+    /**
+     * How far back each earnings sync re-reads finance transactions. Ad fees,
+     * refunds and shipping labels post days or weeks after the sale.
+     */
+    private const EARNINGS_LOOKBACK_DAYS = 60;
 
     public function __construct(
         private readonly EbayClientInterface $ebayClient,
@@ -23,6 +31,7 @@ class EbaySyncService
         string $dataDir,
     ) {
         $this->syncStateFile = rtrim($dataDir, '/\\') . DIRECTORY_SEPARATOR . 'sync_state.json';
+        $this->chargeRepo    = new EbayChargeRepository($dataDir);
         $this->ensureSyncState();
     }
 
@@ -42,7 +51,10 @@ class EbaySyncService
                 'offset' => $offset,
             ];
 
-            $filterFrom = $this->toEbayTimestamp($lastSyncedAt);
+            // One full pass so orders synced before fees were recorded pick them up.
+            $filterFrom = empty($state['orders']['earnings_backfilled'])
+                ? null
+                : $this->toEbayTimestamp($lastSyncedAt);
             if ($filterFrom !== null) {
                 $query['filter'] = 'lastmodifieddate:[' . $filterFrom . '..]';
             }
@@ -57,7 +69,24 @@ class EbaySyncService
             $total  = $response['total'] ?? 0;
 
             foreach ($orders as $ebayOrder) {
-                $mapped = $mapper->map($ebayOrder);
+                $mapped   = $mapper->map($ebayOrder);
+                $existing = $this->orderRepo->find($mapped['id']);
+                // The actual payout from the Finances API beats the order's own estimate.
+                if (($existing['earnings']['source'] ?? '') === 'finances') {
+                    $mapped['earnings'] = $existing['earnings'];
+                }
+                // eBay knows nothing of what was recorded here; keep it.
+                if ($existing !== null) {
+                    if (isset($existing['fulfillment'])) {
+                        $mapped['fulfillment'] = $existing['fulfillment'];
+                    }
+                    $mapped['notes'] = $existing['notes'] ?? $mapped['notes'];
+                    foreach (['tracking_number', 'carrier', 'shipped_at'] as $field) {
+                        if (empty($mapped['shipping'][$field]) && !empty($existing['shipping'][$field])) {
+                            $mapped['shipping'][$field] = $existing['shipping'][$field];
+                        }
+                    }
+                }
                 $this->orderRepo->save($mapped);
                 $synced++;
             }
@@ -68,9 +97,103 @@ class EbaySyncService
         // Update sync state
         $state['orders']['last_synced_at'] = date('c');
         $state['orders']['total_synced']   = ($state['orders']['total_synced'] ?? 0) + $synced;
+        $state['orders']['earnings_backfilled'] = true;
         $this->saveSyncState($state);
 
-        return ['synced' => $synced, 'total_available' => $total];
+        // Non-fatal: without the sell.finances scope orders keep their estimate.
+        try {
+            $earnings = $this->syncEarnings();
+        } catch (\Throwable $e) {
+            $state = $this->getSyncState();
+            $state['earnings']['error'] = $e->getMessage();
+            $this->saveSyncState($state);
+            $earnings = ['error' => $e->getMessage()];
+        }
+
+        return ['synced' => $synced, 'total_available' => $total, 'earnings' => $earnings];
+    }
+
+    /**
+     * Pull Finances API transactions and record, per order, what eBay actually pays
+     * out after fees, ad fees, labels and refunds. Charges tied to no order
+     * (insertion fees, subscription) are kept separately for the profit summary.
+     */
+    public function syncEarnings(): array
+    {
+        $state = $this->getSyncState();
+        $last  = $state['earnings']['last_synced_at'] ?? null;
+        $now   = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+
+        $from = $last !== null
+            ? (new \DateTimeImmutable($last))->modify('-' . self::EARNINGS_LOOKBACK_DAYS . ' days')
+            : $this->oldestOrderDate();
+        if ($from === null) {
+            return ['updated' => 0, 'charges' => 0];
+        }
+
+        $range   = 'transactionDate:[' . $this->toEbayTimestamp($from->format('c')) . '..'
+            . $this->toEbayTimestamp($now->format('c')) . ']';
+        $byOrder = [];
+        $charges = [];
+        $offset  = 0;
+        $limit   = 1000;
+
+        do {
+            $page = $this->ebayClient->getFinanceTransactions([
+                'filter' => $range,
+                'limit'  => $limit,
+                'offset' => $offset,
+            ]);
+            $transactions = $page['transactions'] ?? [];
+
+            foreach ($transactions as $tx) {
+                $orderId = EarningsCalculator::orderIdOf($tx);
+                if ($orderId !== null) {
+                    $byOrder[$orderId][EarningsCalculator::key($tx)] = EarningsCalculator::slim($tx);
+                } elseif (EarningsCalculator::isAccountCharge($tx)) {
+                    $charges[] = EarningsCalculator::toCharge($tx);
+                }
+            }
+
+            $offset += $limit;
+        } while ($offset < (int)($page['total'] ?? 0) && count($transactions) === $limit);
+
+        $updated = 0;
+        foreach ($byOrder as $orderId => $transactions) {
+            $order = $this->orderRepo->find((string)$orderId);
+            if ($order === null) {
+                continue;
+            }
+            // Merge with what earlier syncs saw: the look-back window can cut an
+            // order's transactions in half.
+            $known = ($order['earnings']['source'] ?? '') === 'finances'
+                ? ($order['earnings']['transactions'] ?? [])
+                : [];
+            $order['earnings'] = EarningsCalculator::fromTransactions(array_merge($known, $transactions), $order);
+            $this->orderRepo->save($order);
+            $updated++;
+        }
+
+        $this->chargeRepo->upsertMany($charges);
+
+        $state = $this->getSyncState();
+        $state['earnings'] = ['last_synced_at' => $now->format('c'), 'error' => null];
+        $this->saveSyncState($state);
+
+        return ['updated' => $updated, 'charges' => count($charges)];
+    }
+
+    private function oldestOrderDate(): ?\DateTimeImmutable
+    {
+        $dates = array_filter(array_column($this->orderRepo->findAll([], 1, 100000)['items'], 'created_at'));
+        if ($dates === []) {
+            return null;
+        }
+        try {
+            return (new \DateTimeImmutable(min($dates)))->modify('-1 day');
+        } catch (\Exception) {
+            return null;
+        }
     }
 
     public function syncListings(): array

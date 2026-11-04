@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { Order, OrderStatus } from '@/types';
 import { formatDate } from '@/lib/formatters';
-import { useFormatMoney } from '@/components/PreferencesProvider';
+import { useFormatAmount, useFormatMoney } from '@/components/PreferencesProvider';
 import { Badge } from '@/components/ui/Badge';
 
 const STATUS_VARIANT: Record<OrderStatus, 'success' | 'info' | 'default' | 'danger' | 'warning'> = {
@@ -18,7 +18,8 @@ interface OrderTableProps {
 }
 
 export function OrderTable({ orders }: OrderTableProps) {
-  const formatMoney = useFormatMoney();
+  const formatMoney  = useFormatMoney();
+  const formatAmount = useFormatAmount();
 
   if (orders.length === 0) {
     return (
@@ -37,6 +38,7 @@ export function OrderTable({ orders }: OrderTableProps) {
             <th className="pb-3 pr-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Buyer</th>
             <th className="pb-3 pr-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Items</th>
             <th className="pb-3 pr-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Total</th>
+            <th className="pb-3 pr-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">You receive</th>
             <th className="pb-3 pr-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Status</th>
             <th className="pb-3 pr-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Date</th>
             <th className="pb-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Actions</th>
@@ -56,6 +58,19 @@ export function OrderTable({ orders }: OrderTableProps) {
               </td>
               <td className="py-3 pr-4 font-semibold">
                 {formatMoney(order.totals.grand_total)}
+              </td>
+              <td className="py-3 pr-4">
+                {order.earnings?.net != null ? (
+                  <span
+                    className="font-semibold text-green-700"
+                    title={order.earnings.source === 'finances' ? 'Actual eBay payout' : 'Estimate — ad fees not included'}
+                  >
+                    {formatAmount(order.earnings.net)}
+                    {order.earnings.source !== 'finances' && <span className="text-gray-400 font-normal"> ≈</span>}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">—</span>
+                )}
               </td>
               <td className="py-3 pr-4">
                 <Badge variant={STATUS_VARIANT[order.status] ?? 'default'}>

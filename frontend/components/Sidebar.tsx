@@ -13,6 +13,7 @@ import {
   Tag,
   TrendingUp,
   UserCircle,
+  Wallet,
   X,
 } from 'lucide-react';
 import Logo from '@/components/Logo';
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { href: '/monitor',    label: 'Monitor',    Icon: Activity },
   { href: '/repricing',  label: 'Repricing',  Icon: TrendingUp },
   { href: '/feedback',   label: 'Feedback',   Icon: MessageSquareReply },
+  { href: '/finance',   label: 'Finance',   Icon: Wallet },
   { href: '/reports',   label: 'Reports',   Icon: BarChart2 },
   { href: '/settings',  label: 'Settings',  Icon: Settings },
   { href: '/profile',   label: 'Profile',   Icon: UserCircle },

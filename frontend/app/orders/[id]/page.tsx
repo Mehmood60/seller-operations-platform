@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Package, Truck } from 'lucide-react';
 import type { Order, OrderStatus } from '@/types';
 import InvoiceDownloadButton from './InvoiceDownloadButton';
+import { EarningsBreakdown } from '@/components/EarningsBreakdown';
 
 const STATUS_VARIANT: Record<OrderStatus, 'success' | 'info' | 'danger' | 'warning'> = {
   PAID:      'info',
@@ -150,6 +151,8 @@ export default function OrderDetailPage() {
           </CardBody>
         </Card>
       </div>
+
+      {order.earnings && <EarningsBreakdown earnings={order.earnings} />}
 
       {/* Buyer + Payment */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

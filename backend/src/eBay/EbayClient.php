@@ -458,6 +458,25 @@ XML;
     }
 
     /**
+     * One page of Finances API transactions. The Finances API lives on apiz, not
+     * on the api host the other Sell APIs share.
+     */
+    public function getFinanceTransactions(array $query): array
+    {
+        $host = $this->sandbox ? 'https://apiz.sandbox.ebay.com' : 'https://apiz.ebay.com';
+        $res  = $this->sellRequest('GET', $host . '/sell/finances/v1/transaction', null, $query);
+
+        if ($res['status'] >= 400) {
+            $error = $res['status'] === 403 || $res['status'] === 401
+                ? $this->describeSellError($res['data'], $res['status'], '', 'sell.finances')
+                : $res['error'];
+            throw new \RuntimeException('eBay Finances API error: ' . $error);
+        }
+
+        return $res['data'];
+    }
+
+    /**
      * Flatten eBay's errors[] envelope into one readable line. A missing-scope 403 gets
      * an explicit hint appended — the fix (re-running OAuth consent) is not something
      * eBay's own wording makes obvious.

@@ -25,6 +25,7 @@ class OrderMapper
             'payment'       => $this->mapPayment($ebayOrder),
             'shipping'      => $this->mapShipping($ebayOrder),
             'totals'        => $this->mapTotals($ebayOrder),
+            'earnings'      => $this->mapEarnings($ebayOrder),
             'notes'         => '',
             'created_at'    => $ebayOrder['creationDate'] ?? date('c'),
             'updated_at'    => $ebayOrder['lastModifiedDate'] ?? date('c'),
@@ -117,6 +118,47 @@ class OrderMapper
             'shipping'    => $this->mapMoney($pricing['deliveryCost'] ?? []),
             'grand_total' => $this->mapMoney($pricing['total'] ?? []),
         ];
+    }
+
+    /**
+     * What the seller keeps, as far as the order itself can tell. eBay reports the
+     * marketplace fees it deducts (totalMarketplaceFee) but not Promoted Listings
+     * ad fees, so this is an estimate until the Finances API replaces it with the
+     * actual payout — see EbaySyncService::syncEarnings().
+     */
+    private function mapEarnings(array $order): array
+    {
+        $total    = $order['pricingSummary']['total'] ?? [];
+        $gross    = (float)($total['value'] ?? 0);
+        $currency = $total['currency'] ?? 'EUR';
+        $fee      = $order['totalMarketplaceFee'] ?? null;
+
+        if (!is_array($fee) || !isset($fee['value'])) {
+            return [
+                'source'     => 'unknown',
+                'currency'   => $currency,
+                'gross'      => self::amount($gross),
+                'fees'       => [],
+                'total_fees' => null,
+                'net'        => null,
+            ];
+        }
+
+        $feeValue = (float)$fee['value'];
+
+        return [
+            'source'     => 'order',
+            'currency'   => $currency,
+            'gross'      => self::amount($gross),
+            'fees'       => [['type' => 'MARKETPLACE_FEE', 'label' => 'eBay fees', 'amount' => self::amount($feeValue)]],
+            'total_fees' => self::amount($feeValue),
+            'net'        => self::amount($gross - $feeValue),
+        ];
+    }
+
+    private static function amount(float $value): string
+    {
+        return number_format($value, 2, '.', '');
     }
 
     private function mapMoney(array $money): array

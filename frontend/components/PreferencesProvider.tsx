@@ -92,3 +92,17 @@ export function useFormatMoney(): (money: Money | undefined | null) => string {
     [currency],
   );
 }
+
+/** Formats a bare amount with the sign in front of the symbol: −€2.79, not €-2.79. */
+export function useFormatAmount(): (value: string | number | null | undefined) => string {
+  const { currency } = usePreferences();
+  return useCallback(
+    (value: string | number | null | undefined): string => {
+      if (value === null || value === undefined || value === '') return '—';
+      const n      = typeof value === 'number' ? value : parseFloat(value);
+      const symbol = CURRENCY_SYMBOLS[currency] ?? currency;
+      return (n < 0 ? '−' : '') + symbol + Math.abs(n).toFixed(2);
+    },
+    [currency],
+  );
+}

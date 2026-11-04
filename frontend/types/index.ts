@@ -81,6 +81,90 @@ export interface Order {
   updated_at: string;
   synced_at: string;
   fulfillment?: Fulfillment;
+  earnings?: OrderEarnings;
+}
+
+// ─── Earnings & finance ─────────────────────────────────────────────────────
+
+/**
+ * What the seller keeps from an order. 'finances' is eBay's actual payout
+ * (Finances API); 'order' estimates it from the order's marketplace fee, which
+ * leaves out Promoted Listings ad fees; 'unknown' has no fee data at all.
+ */
+export type EarningsSource = 'finances' | 'order' | 'unknown';
+
+export interface EarningsFee {
+  type: string;
+  label: string;
+  amount: string;
+}
+
+export interface OrderEarnings {
+  source: EarningsSource;
+  currency: string;
+  gross: string;
+  fees: EarningsFee[];
+  total_fees: string | null;
+  refunds?: string;
+  net: string | null;
+  on_hold?: boolean;
+  updated_at?: string;
+}
+
+export type ExpenseCategory =
+  | 'business_registration' | 'ebay_fees' | 'product_purchases' | 'shipping'
+  | 'software' | 'taxes' | 'marketing' | 'other';
+
+export interface Expense {
+  id: string;
+  date: string;
+  amount: string;
+  currency: string;
+  category: ExpenseCategory;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EbayCharge {
+  id: string;
+  date: string;
+  type: string;
+  label: string;
+  memo: string;
+  amount: string;
+  currency: string;
+}
+
+export interface FinanceOrderRow {
+  id: string;
+  date: string;
+  title: string;
+  status: OrderStatus;
+  gross: string;
+  total_fees: string;
+  net: string;
+  source: EarningsSource;
+  on_hold: boolean;
+}
+
+export interface FinanceSummary {
+  period: { from: string; to: string };
+  currency: string;
+  orders: {
+    count: number;
+    gross: string;
+    fees: string;
+    refunds: string;
+    net: string;
+    exact_count: number;
+    estimated_count: number;
+    unknown_count: number;
+  };
+  ebay_charges: { total: string; items: EbayCharge[] };
+  expenses: { total: string; by_category: Array<{ category: ExpenseCategory; label: string; total: string }> };
+  profit: string;
+  order_rows: FinanceOrderRow[];
 }
 
 // ─── Listing ────────────────────────────────────────────────────────────────
@@ -186,6 +270,11 @@ export interface SyncState {
   listings: {
     last_synced_at: string | null;
     total_synced: number;
+  };
+  /** Finances API import; error holds why the last one failed (e.g. missing scope). */
+  earnings?: {
+    last_synced_at: string | null;
+    error: string | null;
   };
 }
 
